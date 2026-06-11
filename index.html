@@ -472,12 +472,12 @@
     </div>
 
     <div>
-      <div class="field-label">OpenAI API Key</div>
+      <div class="field-label">Google Cloud API Key</div>
       <div class="key-row">
-        <input class="key-input" id="openaiKey" type="password" placeholder="sk-..." />
-        <button class="save-btn" onclick="saveOpenAIKey()">保存</button>
+        <input class="key-input" id="googleKey" type="password" placeholder="AIza..." />
+        <button class="save-btn" onclick="saveGoogleKey()">保存</button>
       </div>
-      <div class="key-status" id="openaiStatus">未設定</div>
+      <div class="key-status" id="googleStatus">未設定</div>
     </div>
 
     <hr class="divider" />
@@ -554,7 +554,7 @@
 <script>
 // ── State ─────────────────────────────────────────────────────
 let anthropicKey = localStorage.getItem('formeny_anthropic_key') || '';
-let openaiKey    = localStorage.getItem('formeny_openai_key')    || '';
+let googleKey    = localStorage.getItem('formeny_google_key')    || '';
 let participants = [];
 let currentPhaseIdx = 0;
 let currentAudio = null;
@@ -576,7 +576,7 @@ const PROGRESS_MAP = { intro: 10, bodyscan: 35, impro_intro: 60, impro_game: 80,
 // ── Init ──────────────────────────────────────────────────────
 (function init() {
   if (anthropicKey) { setKeyOk('anthropicStatus'); document.getElementById('anthropicKey').value = '••••••••'; }
-  if (openaiKey)    { setKeyOk('openaiStatus');    document.getElementById('openaiKey').value    = '••••••••'; }
+  if (googleKey)    { setKeyOk('googleStatus');    document.getElementById('googleKey').value    = '••••••••'; }
   addParticipantField();
   addParticipantField();
   addParticipantField();
@@ -593,13 +593,13 @@ function saveAnthropicKey() {
   setKeyOk('anthropicStatus');
   checkStartable();
 }
-function saveOpenAIKey() {
-  const v = document.getElementById('openaiKey').value.trim();
+function saveGoogleKey() {
+  const v = document.getElementById('googleKey').value.trim();
   if (!v || v === '••••••••') return;
-  openaiKey = v;
-  localStorage.setItem('formeny_openai_key', v);
-  document.getElementById('openaiKey').value = '••••••••';
-  setKeyOk('openaiStatus');
+  googleKey = v;
+  localStorage.setItem('formeny_google_key', v);
+  document.getElementById('googleKey').value = '••••••••';
+  setKeyOk('googleStatus');
   checkStartable();
 }
 function setKeyOk(id) {
@@ -631,7 +631,7 @@ function getParticipantNames() {
 }
 function checkStartable() {
   const names = getParticipantNames();
-  const ok = anthropicKey && openaiKey && names.length >= 2;
+  const ok = anthropicKey && googleKey && names.length >= 2;
   document.getElementById('startBtn').disabled = !ok;
 }
 
@@ -869,19 +869,27 @@ function splitWithPauses(text) {
 function speakSegment(text) {
   return new Promise(function(resolve) {
     if (_stopRequested) { resolve(); return; }
-    fetch('https://api.openai.com/v1/audio/speech', {
+    // Google Cloud TTS REST API — Chirp3 HD, ja-JP-Chirp3-HD-Charon (male, natural)
+    fetch('https://texttospeech.googleapis.com/v1/text:synthesize?key=' + googleKey, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + openaiKey,
-      },
-      body: JSON.stringify({ model: 'tts-1-hd', input: text, voice: 'onyx', speed: 0.86 }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input: { text: text },
+        voice: { languageCode: 'ja-JP', name: 'ja-JP-Chirp3-HD-Charon' },
+        audioConfig: { audioEncoding: 'MP3', speakingRate: 0.90 },
+      }),
     })
     .then(function(resp) {
-      if (!resp.ok) throw new Error('TTS ' + resp.status);
-      return resp.blob();
+      if (!resp.ok) throw new Error('Google TTS ' + resp.status);
+      return resp.json();
     })
-    .then(function(blob) {
+    .then(function(data) {
+      if (!data.audioContent) throw new Error('No audioContent');
+      // Decode base64 MP3
+      const binary = atob(data.audioContent);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'audio/mpeg' });
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       currentAudio = audio;
@@ -895,7 +903,7 @@ function speakSegment(text) {
       audio.play().catch(cleanup);
     })
     .catch(function(e) {
-      console.warn('TTS error:', e);
+      console.warn('Google TTS error:', e);
       resolve();
     });
   });
