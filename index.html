@@ -464,6 +464,10 @@
   .replay-story-label { font-size: 9px; letter-spacing: 0.18em; color: var(--apricot); font-weight: 400; align-self: flex-start; }
   .replay-story-words { font-family: 'Cormorant Garamond', serif; font-size: 19px; font-weight: 300; color: var(--text-mid); line-height: 1.9; align-self: flex-start; }
 
+  /* ── Story image on end screen ── */
+  #storyImageWrap { margin-top: 8px; }
+  #storyImage { border-radius: 2px; box-shadow: 0 2px 16px rgba(0,0,0,0.08); }
+
   /* ── Loading dots ── */
   .ldots { display: inline-flex; gap: 5px; vertical-align: middle; }
   .ldot {
@@ -581,9 +585,8 @@
     <div class="round-ind" id="roundInd"></div>
   </div>
 
-  <!-- end story + replay story buttons (shown during story phase) -->
+  <!-- end story button (shown during story phase) -->
   <div id="storyControls" style="display:none; gap:12px; flex-wrap:wrap; justify-content:center;">
-    <button class="ctrl-btn" id="replayStoryBtn" onclick="replayStory()" style="display:none;">物語を再生 ▶</button>
     <button class="ctrl-btn primary" onclick="endStoryPhase()">ストーリーを終わる ›</button>
   </div>
 
@@ -604,6 +607,14 @@
     <div class="replay-story-label">みんなで作った物語</div>
     <div class="replay-story-words" id="replayStoryWords"></div>
     <button class="ctrl-btn primary" id="replayAllBtn" onclick="replayAllRecordings()">▶ 声をつなげて再生</button>
+    <div id="storyImageWrap" style="display:none; flex-direction:column; align-items:center; gap:12px; width:100%;">
+      <div class="replay-story-label" style="align-self:flex-start;">みんなで作った物語の絵</div>
+      <div id="storyImageLoading" style="font-size:11px; color:var(--text-dim); letter-spacing:0.08em;">
+        <div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>
+        絵を生成中…
+      </div>
+      <img id="storyImage" src="" alt="物語の絵" style="display:none; width:100%; max-width:480px; border:1px solid var(--border);" />
+    </div>
   </div>
   <button class="ctrl-btn" onclick="resetSession()" style="margin-top:8px">最初に戻る</button>
 </div>
@@ -894,11 +905,6 @@ async function stopRecording() {
 
   updateStoryDisplay();
 
-  // Show replay button once we have words
-  if (storyAudioBlobs.length > 0) {
-    document.getElementById('replayStoryBtn').style.display = 'inline-block';
-  }
-
   // Announce next
   await announceNextTurn();
 }
@@ -937,17 +943,6 @@ async function endStoryPhase() {
   document.getElementById('mainControls').style.display = 'flex';
   // runPhase('outro') will speak the script, then auto-call endSession()
   await runPhase('outro');
-}
-
-// Play all recorded blobs in sequence
-async function replayStory() {
-  if (storyAudioBlobs.length === 0) return;
-  const btn = document.getElementById('replayStoryBtn');
-  btn.disabled = true;
-  for (let i = 0; i < storyAudioBlobs.length; i++) {
-    await playBlob(storyAudioBlobs[i]);
-  }
-  btn.disabled = false;
 }
 
 async function replayAllRecordings() {
@@ -1156,7 +1151,14 @@ function endSession() {
   document.getElementById('screenFacilitator').classList.remove('active');
   document.getElementById('screenEnd').classList.add('active');
 
-  // Show story words + replay button
+  // endMessage: set from currentScript (outro already played in runPhase)
+  if (currentScript) {
+    document.getElementById('endMessage').textContent = currentScript.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
+  } else {
+    document.getElementById('endMessage').textContent = 'お疲れ様でした。';
+  }
+
+  // Show story words + replay button + image
   if (storyWords.length > 0) {
     const storyText = storyWords.map(function(w) { return w.word; }).join(' ');
     document.getElementById('replayStoryArea').style.display = 'flex';
@@ -1164,12 +1166,53 @@ function endSession() {
     if (storyAudioBlobs.length === 0) {
       document.getElementById('replayAllBtn').style.display = 'none';
     }
+    // Generate image asynchronously
+    document.getElementById('storyImageWrap').style.display = 'flex';
+    generateStoryImage(storyText);
   }
-  // endMessage: set from currentScript (outro already played in runPhase)
-  if (currentScript) {
-    document.getElementById('endMessage').textContent = currentScript.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
-  } else {
-    document.getElementById('endMessage').textContent = 'お疲れ様でした。';
+}
+
+// ── Story image generation (gpt-image-1) ─────────────────────
+async function generateStoryImage(storyText) {
+  const loading = document.getElementById('storyImageLoading');
+  const img = document.getElementById('storyImage');
+  loading.style.display = 'flex';
+  img.style.display = 'none';
+
+  const prompt =
+    'この短い日本語の物語からインスピレーションを受けた、温かく詩的な水彩画のイラストを1枚描いてください。' +
+    '登場人物や具体的なシーンを想像して、柔らかい色調・手描き感のあるスタイルで表現してください。' +
+    'テキストや文字は入れないでください。' +
+    '物語：「' + storyText + '」';
+
+  try {
+    const resp = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + openaiKey,
+      },
+      body: JSON.stringify({
+        model: 'gpt-image-1',
+        prompt: prompt,
+        n: 1,
+        size: '1024x1024',
+        quality: 'standard',
+      }),
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message);
+
+    // gpt-image-1 returns base64
+    const b64 = data.data[0].b64_json;
+    img.src = 'data:image/png;base64,' + b64;
+    img.onload = function() {
+      loading.style.display = 'none';
+      img.style.display = 'block';
+    };
+  } catch(e) {
+    console.warn('Image generation error:', e);
+    loading.innerHTML = '（絵の生成に失敗しました）';
   }
 }
 
@@ -1192,6 +1235,11 @@ function resetSession() {
   document.getElementById('replayAllBtn').style.display = 'inline-block';
   document.getElementById('replayAllBtn').disabled = false;
   document.getElementById('replayAllBtn').textContent = '▶ 声をつなげて再生';
+  document.getElementById('storyImageWrap').style.display = 'none';
+  document.getElementById('storyImage').src = '';
+  document.getElementById('storyImage').style.display = 'none';
+  document.getElementById('storyImageLoading').style.display = 'flex';
+  document.getElementById('storyImageLoading').innerHTML = '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>絵を生成中…';
   document.getElementById('endMessage').innerHTML = '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
 }
 
