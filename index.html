@@ -1112,6 +1112,8 @@ function speakSegment(text) {
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       currentAudio = audio;
+      // Check again after fetch — user may have pressed next during API call
+      if (_stopRequested) { URL.revokeObjectURL(url); resolve(); return; }
       function cleanup() {
         URL.revokeObjectURL(url);
         currentAudio = null;
@@ -1130,7 +1132,15 @@ function speakSegment(text) {
 
 function sleep(ms) {
   return new Promise(function(resolve) {
-    setTimeout(resolve, ms);
+    // Poll _stopRequested every 100ms so stop is near-instant
+    if (_stopRequested) { resolve(); return; }
+    const start = Date.now();
+    const id = setInterval(function() {
+      if (_stopRequested || Date.now() - start >= ms) {
+        clearInterval(id);
+        resolve();
+      }
+    }, 100);
   });
 }
 
