@@ -757,6 +757,11 @@ async function runPhase(phase) {
   document.getElementById('replayBtn').disabled = false;
   document.getElementById('nextBtn').disabled = false;
   await speak(script);
+
+  // outro → automatically move to end screen after TTS finishes
+  if (phase === 'outro') {
+    await endSession();
+  }
 }
 
 // ── Navigation ────────────────────────────────────────────────
@@ -764,7 +769,7 @@ async function nextPhase() {
   stopAudio();
   currentPhaseIdx++;
   if (currentPhaseIdx >= PHASES.length) {
-    await endSession();
+    endSession();
     return;
   }
   await runPhase(PHASES[currentPhaseIdx]);
@@ -927,9 +932,10 @@ async function transcribeWithWhisper(blob, mimeType) {
 async function endStoryPhase() {
   currentPhaseIdx = PHASES.indexOf('outro');
   document.getElementById('storyControls').style.display = 'none';
-  document.getElementById('mainControls').style.display = 'flex';
   document.getElementById('storyCard').style.display = 'none';
   document.getElementById('scriptBox').style.display = 'block';
+  document.getElementById('mainControls').style.display = 'flex';
+  // runPhase('outro') will speak the script, then auto-call endSession()
   await runPhase('outro');
 }
 
@@ -1135,12 +1141,12 @@ function stopAudio() {
 }
 
 // ── End session ───────────────────────────────────────────────
-async function endSession() {
+function endSession() {
   stopAudio();
   document.getElementById('screenFacilitator').classList.remove('active');
   document.getElementById('screenEnd').classList.add('active');
 
-  // Show story words + replay button if we have recordings
+  // Show story words + replay button
   if (storyWords.length > 0) {
     const storyText = storyWords.map(function(w) { return w.word; }).join(' ');
     document.getElementById('replayStoryArea').style.display = 'flex';
@@ -1149,10 +1155,12 @@ async function endSession() {
       document.getElementById('replayAllBtn').style.display = 'none';
     }
   }
-
-  const script = await generateScript('outro');
-  document.getElementById('endMessage').textContent = script.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
-  await speak(script);
+  // endMessage: set from currentScript (outro already played in runPhase)
+  if (currentScript) {
+    document.getElementById('endMessage').textContent = currentScript.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
+  } else {
+    document.getElementById('endMessage').textContent = 'お疲れ様でした。';
+  }
 }
 
 function resetSession() {
