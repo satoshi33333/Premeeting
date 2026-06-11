@@ -431,6 +431,39 @@
     line-height: 1.9;
   }
 
+  /* ── Record button ── */
+  .rec-btn {
+    width: 80px; height: 80px; border-radius: 50%;
+    border: 2px solid var(--apricot);
+    background: transparent;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    -webkit-user-select: none; user-select: none;
+    touch-action: none;
+  }
+  .rec-btn:hover { border-color: var(--apricot-lt); }
+  .rec-btn.recording { border-color: var(--red); animation: recPulse 1.2s ease-in-out infinite; }
+  .rec-dot {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--apricot); transition: all 0.15s;
+  }
+  .rec-btn.recording .rec-dot { background: var(--red); border-radius: 3px; }
+  @keyframes recPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(192,80,64,0.3); } 50% { box-shadow: 0 0 0 14px rgba(192,80,64,0); } }
+  .rec-label { font-size: 10px; color: var(--text-dim); letter-spacing: 0.1em; }
+
+  /* ── Story replay on end screen ── */
+  .replay-story-area {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--apricot);
+    padding: 24px 32px;
+    display: flex; flex-direction: column; gap: 14px; align-items: center;
+  }
+  .replay-story-label { font-size: 9px; letter-spacing: 0.18em; color: var(--apricot); font-weight: 400; align-self: flex-start; }
+  .replay-story-words { font-family: 'Cormorant Garamond', serif; font-size: 19px; font-weight: 300; color: var(--text-mid); line-height: 1.9; align-self: flex-start; }
+
   /* ── Loading dots ── */
   .ldots { display: inline-flex; gap: 5px; vertical-align: middle; }
   .ldot {
@@ -472,7 +505,16 @@
     </div>
 
     <div>
-      <div class="field-label">Google Cloud API Key</div>
+      <div class="field-label">OpenAI API Key（音声認識）</div>
+      <div class="key-row">
+        <input class="key-input" id="openaiKey" type="password" placeholder="sk-..." />
+        <button class="save-btn" onclick="saveOpenAIKey()">保存</button>
+      </div>
+      <div class="key-status" id="openaiStatus">未設定</div>
+    </div>
+
+    <div>
+      <div class="field-label">Google Cloud API Key（音声合成）</div>
       <div class="key-row">
         <input class="key-input" id="googleKey" type="password" placeholder="AIza..." />
         <button class="save-btn" onclick="saveGoogleKey()">保存</button>
@@ -520,15 +562,29 @@
   <div class="story-card" id="storyCard" style="display:none">
     <div class="field-label">One Word Story</div>
     <div class="participant-list" id="participantList"></div>
+
+    <!-- announce + record area -->
+    <div id="storyAnnounce" style="min-height:36px; font-family:'Cormorant Garamond',serif; font-size:18px; font-weight:300; color:var(--apricot); text-align:center; letter-spacing:0.04em;"></div>
+
+    <div style="display:flex; flex-direction:column; align-items:center; gap:12px;">
+      <button class="rec-btn" id="recBtn" onmousedown="startRecording()" onmouseup="stopRecording()" ontouchstart="startRecording()" ontouchend="stopRecording()">
+        <div class="rec-dot" id="recDot"></div>
+      </button>
+      <div class="rec-label" id="recLabel">押している間、録音</div>
+      <div id="recStatus" style="font-size:10px; color:var(--text-dim); letter-spacing:0.08em; min-height:16px;"></div>
+    </div>
+
     <div>
       <div class="story-label">みんなで作っている物語</div>
       <div class="story-words" id="storyWords">（まだ始まっていません）</div>
     </div>
-    <div class="word-input-row">
-      <input class="word-input" id="wordInput" placeholder="一語を入力して Enter…" onkeydown="if(event.key==='Enter')addWord()" />
-      <button class="add-word-btn" onclick="addWord()">追加</button>
-    </div>
     <div class="round-ind" id="roundInd"></div>
+  </div>
+
+  <!-- end story + replay story buttons (shown during story phase) -->
+  <div id="storyControls" style="display:none; gap:12px; flex-wrap:wrap; justify-content:center;">
+    <button class="ctrl-btn" id="replayStoryBtn" onclick="replayStory()" style="display:none;">物語を再生 ▶</button>
+    <button class="ctrl-btn primary" onclick="endStoryPhase()">ストーリーを終わる ›</button>
   </div>
 
   <div class="controls" id="mainControls">
@@ -544,9 +600,10 @@
   <div class="end-message" id="endMessage">
     <div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>
   </div>
-  <div class="story-result" id="storyResult" style="display:none">
-    <div class="story-result-label">みんなで作った物語</div>
-    <div class="story-result-text" id="storyResultText"></div>
+  <div class="replay-story-area" id="replayStoryArea" style="display:none">
+    <div class="replay-story-label">みんなで作った物語</div>
+    <div class="replay-story-words" id="replayStoryWords"></div>
+    <button class="ctrl-btn primary" id="replayAllBtn" onclick="replayAllRecordings()">▶ 声をつなげて再生</button>
   </div>
   <button class="ctrl-btn" onclick="resetSession()" style="margin-top:8px">最初に戻る</button>
 </div>
@@ -555,13 +612,18 @@
 // ── State ─────────────────────────────────────────────────────
 let anthropicKey = localStorage.getItem('formeny_anthropic_key') || '';
 let googleKey    = localStorage.getItem('formeny_google_key')    || '';
+let openaiKey    = localStorage.getItem('formeny_openai_key')    || '';
 let participants = [];
 let currentPhaseIdx = 0;
 let currentAudio = null;
-let storyWords = [];
+let storyWords = [];       // [{word, person, audioBlob}]
+let storyAudioBlobs = [];  // ordered Blobs for final replay
 let currentTurnIdx = 0;
 let roundCount = 0;
 let currentScript = '';
+let mediaRecorder = null;
+let recChunks = [];
+let isRecording = false;
 
 const PHASES = ['intro', 'bodyscan', 'impro_intro', 'impro_game', 'outro'];
 const PHASE_TAGS = {
@@ -577,6 +639,7 @@ const PROGRESS_MAP = { intro: 10, bodyscan: 35, impro_intro: 60, impro_game: 80,
 (function init() {
   if (anthropicKey) { setKeyOk('anthropicStatus'); document.getElementById('anthropicKey').value = '••••••••'; }
   if (googleKey)    { setKeyOk('googleStatus');    document.getElementById('googleKey').value    = '••••••••'; }
+  if (openaiKey)    { setKeyOk('openaiStatus');    document.getElementById('openaiKey').value    = '••••••••'; }
   addParticipantField();
   addParticipantField();
   addParticipantField();
@@ -600,6 +663,15 @@ function saveGoogleKey() {
   localStorage.setItem('formeny_google_key', v);
   document.getElementById('googleKey').value = '••••••••';
   setKeyOk('googleStatus');
+  checkStartable();
+}
+function saveOpenAIKey() {
+  const v = document.getElementById('openaiKey').value.trim();
+  if (!v || v === '••••••••') return;
+  openaiKey = v;
+  localStorage.setItem('formeny_openai_key', v);
+  document.getElementById('openaiKey').value = '••••••••';
+  setKeyOk('openaiStatus');
   checkStartable();
 }
 function setKeyOk(id) {
@@ -631,7 +703,7 @@ function getParticipantNames() {
 }
 function checkStartable() {
   const names = getParticipantNames();
-  const ok = anthropicKey && googleKey && names.length >= 2;
+  const ok = anthropicKey && googleKey && openaiKey && names.length >= 2;
   document.getElementById('startBtn').disabled = !ok;
 }
 
@@ -640,6 +712,7 @@ async function startSession() {
   participants = getParticipantNames();
   currentPhaseIdx = 0;
   storyWords = [];
+  storyAudioBlobs = [];
   currentTurnIdx = 0;
   roundCount = 0;
   currentScript = '';
@@ -663,9 +736,11 @@ async function runPhase(phase) {
   if (phase === 'impro_game') {
     document.getElementById('scriptBox').style.display = 'none';
     document.getElementById('storyCard').style.display = 'flex';
+    document.getElementById('storyControls').style.display = 'flex';
+    document.getElementById('mainControls').style.display = 'none';
     buildParticipantList();
     updateStoryDisplay();
-    document.getElementById('wordInput').focus();
+    await announceNextTurn();
     return;
   }
 
@@ -678,7 +753,7 @@ async function runPhase(phase) {
   const script = await generateScript(phase);
   currentScript = script;
   document.getElementById('scriptBox').className = 'script-box speaking';
-  document.getElementById('scriptBox').textContent = script;
+  document.getElementById('scriptBox').textContent = script.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
   document.getElementById('replayBtn').disabled = false;
   document.getElementById('nextBtn').disabled = false;
   await speak(script);
@@ -703,6 +778,8 @@ async function replayCurrentPhase() {
 }
 
 // ── One Word Story ────────────────────────────────────────────
+// ── One Word Story ────────────────────────────────────────────
+
 function buildParticipantList() {
   const list = document.getElementById('participantList');
   list.innerHTML = '';
@@ -726,23 +803,6 @@ function updateHighlight() {
   });
 }
 
-function addWord() {
-  const input = document.getElementById('wordInput');
-  const word = input.value.trim();
-  if (!word) return;
-  storyWords.push({ word: word, person: participants[currentTurnIdx] });
-  input.value = '';
-  currentTurnIdx = (currentTurnIdx + 1) % participants.length;
-  if (currentTurnIdx === 0) roundCount++;
-  updateStoryDisplay();
-  updateHighlight();
-  document.getElementById('roundInd').textContent = roundCount > 0 ? 'ラウンド ' + roundCount + ' 周目' : '';
-  if (roundCount >= 3 && currentTurnIdx === 0) {
-    document.getElementById('nextBtn').textContent = 'セッションを終わる ›';
-  }
-  input.focus();
-}
-
 function updateStoryDisplay() {
   const el = document.getElementById('storyWords');
   if (storyWords.length === 0) {
@@ -753,6 +813,159 @@ function updateStoryDisplay() {
     const cls = i === storyWords.length - 1 ? ' class="new-word"' : '';
     return '<span' + cls + '>' + esc(w.word) + '</span>';
   }).join(' ');
+}
+
+// Announce whose turn it is via TTS
+async function announceNextTurn() {
+  const name = participants[currentTurnIdx];
+  document.getElementById('storyAnnounce').textContent = name + 'さん、どうぞ';
+  document.getElementById('recLabel').textContent = '押している間、録音';
+  document.getElementById('recStatus').textContent = '';
+  updateHighlight();
+  await speak(name + 'さん、どうぞ');
+  // Enable record button after TTS finishes
+  document.getElementById('recBtn').disabled = false;
+}
+
+// ── MediaRecorder recording ────────────────────────────────────
+async function startRecording() {
+  if (isRecording) return;
+  if (currentAudio && !currentAudio.paused) return; // wait for TTS
+  isRecording = true;
+  recChunks = [];
+  document.getElementById('recBtn').classList.add('recording');
+  document.getElementById('recLabel').textContent = '録音中…';
+  document.getElementById('recStatus').textContent = '';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+    mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+    mediaRecorder.ondataavailable = function(e) { if (e.data.size > 0) recChunks.push(e.data); };
+    mediaRecorder.start();
+  } catch(e) {
+    console.warn('Mic error:', e);
+    isRecording = false;
+    document.getElementById('recBtn').classList.remove('recording');
+    document.getElementById('recStatus').textContent = 'マイクへのアクセスを許可してください';
+  }
+}
+
+async function stopRecording() {
+  if (!isRecording || !mediaRecorder) return;
+  isRecording = false;
+  document.getElementById('recBtn').classList.remove('recording');
+  document.getElementById('recBtn').disabled = true;
+  document.getElementById('recLabel').textContent = '認識中…';
+
+  // Stop all mic tracks
+  mediaRecorder.stream.getTracks().forEach(function(t) { t.stop(); });
+
+  await new Promise(function(resolve) {
+    mediaRecorder.onstop = resolve;
+    mediaRecorder.stop();
+  });
+
+  const mimeType = recChunks.length > 0 ? mediaRecorder.mimeType : 'audio/webm';
+  const audioBlob = new Blob(recChunks, { type: mimeType });
+  recChunks = [];
+
+  // Send to Whisper
+  const word = await transcribeWithWhisper(audioBlob, mimeType);
+  if (!word) {
+    document.getElementById('recStatus').textContent = '聞き取れませんでした。もう一度どうぞ';
+    document.getElementById('recBtn').disabled = false;
+    document.getElementById('recLabel').textContent = '押している間、録音';
+    return;
+  }
+
+  // Save word + blob
+  storyWords.push({ word: word, person: participants[currentTurnIdx], blob: audioBlob });
+  storyAudioBlobs.push(audioBlob);
+
+  // Advance turn
+  currentTurnIdx = (currentTurnIdx + 1) % participants.length;
+  if (currentTurnIdx === 0) roundCount++;
+  document.getElementById('roundInd').textContent = roundCount > 0 ? 'ラウンド ' + roundCount + ' 周目' : '';
+
+  updateStoryDisplay();
+
+  // Show replay button once we have words
+  if (storyAudioBlobs.length > 0) {
+    document.getElementById('replayStoryBtn').style.display = 'inline-block';
+  }
+
+  // Announce next
+  await announceNextTurn();
+}
+
+// Whisper transcription
+async function transcribeWithWhisper(blob, mimeType) {
+  const ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
+  const formData = new FormData();
+  formData.append('file', blob, 'audio.' + ext);
+  formData.append('model', 'whisper-1');
+  formData.append('language', 'ja');
+  formData.append('prompt', 'これはOne Word Storyというゲームです。参加者が一語ずつ言っています。');
+  try {
+    const resp = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + openaiKey },
+      body: formData,
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message);
+    // Extract first word only
+    const text = (data.text || '').trim();
+    return text.split(/[\s　。、！？,.!?]+/)[0] || text;
+  } catch(e) {
+    console.warn('Whisper error:', e);
+    return null;
+  }
+}
+
+// End story phase → move to outro
+async function endStoryPhase() {
+  currentPhaseIdx = PHASES.indexOf('outro');
+  document.getElementById('storyControls').style.display = 'none';
+  document.getElementById('mainControls').style.display = 'flex';
+  document.getElementById('storyCard').style.display = 'none';
+  document.getElementById('scriptBox').style.display = 'block';
+  await runPhase('outro');
+}
+
+// Play all recorded blobs in sequence
+async function replayStory() {
+  if (storyAudioBlobs.length === 0) return;
+  const btn = document.getElementById('replayStoryBtn');
+  btn.disabled = true;
+  for (let i = 0; i < storyAudioBlobs.length; i++) {
+    await playBlob(storyAudioBlobs[i]);
+  }
+  btn.disabled = false;
+}
+
+async function replayAllRecordings() {
+  if (storyAudioBlobs.length === 0) return;
+  const btn = document.getElementById('replayAllBtn');
+  btn.disabled = true;
+  btn.textContent = '再生中…';
+  for (let i = 0; i < storyAudioBlobs.length; i++) {
+    await playBlob(storyAudioBlobs[i]);
+  }
+  btn.disabled = false;
+  btn.textContent = '▶ 声をつなげて再生';
+}
+
+function playBlob(blob) {
+  return new Promise(function(resolve) {
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    currentAudio = audio;
+    function cleanup() { URL.revokeObjectURL(url); currentAudio = null; resolve(); }
+    audio.onended = cleanup;
+    audio.onerror = cleanup;
+    audio.play().catch(cleanup);
+  });
 }
 
 // ── Script generation (Claude API) ───────────────────────────
@@ -927,30 +1140,40 @@ async function endSession() {
   document.getElementById('screenFacilitator').classList.remove('active');
   document.getElementById('screenEnd').classList.add('active');
 
-  // Show story if any words were added
+  // Show story words + replay button if we have recordings
   if (storyWords.length > 0) {
-    const story = storyWords.map(function(w) { return w.word; }).join(' ');
-    document.getElementById('storyResult').style.display = 'block';
-    document.getElementById('storyResultText').textContent = story;
+    const storyText = storyWords.map(function(w) { return w.word; }).join(' ');
+    document.getElementById('replayStoryArea').style.display = 'flex';
+    document.getElementById('replayStoryWords').textContent = storyText;
+    if (storyAudioBlobs.length === 0) {
+      document.getElementById('replayAllBtn').style.display = 'none';
+    }
   }
 
   const script = await generateScript('outro');
-  document.getElementById('endMessage').textContent = script;
+  document.getElementById('endMessage').textContent = script.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
   await speak(script);
 }
 
 function resetSession() {
   stopAudio();
   storyWords = [];
+  storyAudioBlobs = [];
   currentPhaseIdx = 0;
   currentTurnIdx = 0;
   roundCount = 0;
   currentScript = '';
+  isRecording = false;
+  mediaRecorder = null;
+  recChunks = [];
   document.getElementById('screenEnd').classList.remove('active');
   document.getElementById('screenFacilitator').classList.remove('active');
   document.getElementById('screenSetup').classList.add('active');
   document.getElementById('nextBtn').textContent = '次へ ›';
-  document.getElementById('storyResult').style.display = 'none';
+  document.getElementById('replayStoryArea').style.display = 'none';
+  document.getElementById('replayAllBtn').style.display = 'inline-block';
+  document.getElementById('replayAllBtn').disabled = false;
+  document.getElementById('replayAllBtn').textContent = '▶ 声をつなげて再生';
   document.getElementById('endMessage').innerHTML = '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
 }
 
