@@ -772,7 +772,10 @@ async function generateScript(phase) {
       'あなたはFOR ME NYのAIファシリテーター「フォーミー」です。\n' +
       '参加者' + count + '名にボディスキャンのガイドを話してください。\n' +
       '流れ：ゆっくりした呼吸の誘導→足先から頭まで身体への意識→「体の中にスペースができた」感覚で締め。\n' +
-      '話し言葉のみ、約3分、間は多めに。毎回少し違う表現で。余分な記号・箇条書き不要。',
+      '【重要】参加者が実際に身体を感じられるよう、文と文の間に必ず [間 Ns] マーカーを入れてください。\n' +
+      '例：「まず、軽く息を吐きましょう。[間 4秒] 鼻からゆっくり息を吸って。[間 5秒] 口から静かに吐き出します。[間 5秒] 足のつま先に意識を向けてください。[間 4秒]」\n' +
+      '呼吸の誘導には4〜6秒、身体部位ごとに3〜4秒の間を入れる。\n' +
+      '話し言葉のみ。[間 Ns] 以外の記号・箇条書き不要。毎回少し違う表現で。',
 
     impro_intro:
       'あなたはFOR ME NYのAIファシリテーター「フォーミー」です。\n' +
@@ -813,7 +816,7 @@ async function generateScript(phase) {
 function fallback(phase) {
   const fb = {
     intro: 'こんにちは。私はAIファシリテーターのフォーミーです。今日の時間では、みなさんが自然体で発想し、お互いの感覚を共有できるよう、サポートしていきます。難しく考えずに、いまこの瞬間を感じながら進めていきましょう。',
-    bodyscan: 'まず、軽く息を吐きましょう。鼻からゆっくり息を吸って、口から静かに吐き出します。足のつま先に意識を向けてください。ふくらはぎ、太もも、お腹、胸、肩、首、顔。それぞれの部分が呼吸とともに、いまここに戻ってきます。深く吸って、吐いて。体の中に少しスペースができましたね。',
+    bodyscan: 'まず、軽く息を吐きましょう。[間 4秒] 鼻からゆっくり息を吸って。[間 5秒] 口から静かに吐き出します。[間 5秒] 足のつま先に意識を向けてください。[間 4秒] ふくらはぎ。[間 3秒] 太もも。[間 3秒] お腹。[間 3秒] 胸。[間 3秒] 肩。[間 3秒] 首。[間 3秒] 顔。[間 4秒] それぞれの部分が、呼吸とともに、いまここに戻ってきます。[間 4秒] 深く吸って。[間 5秒] 吐いて。[間 5秒] 体の中に、少しスペースができましたね。',
     impro_intro: '次は「ワンワード・ストーリー」です。一人ずつ、一つの言葉だけを言っていくアクティビティです。思いついた言葉をそのまま口に出すだけでOK。笑っても止まっても大丈夫。大切なのはつながること。では始めましょう。',
     outro: 'お疲れ様でした。みなさんが紡いだ言葉と笑顔、どうぞこれからのミーティングの中にも持ち込んでください。それでは、始めましょう。',
   };
@@ -821,20 +824,58 @@ function fallback(phase) {
 }
 
 // ── TTS (OpenAI) ──────────────────────────────────────────────
-function speak(text) {
+// Splits text on [間 Ns] markers and inserts real silence between segments.
+// e.g. "息を吸って。[間 4秒] 吐き出します。" → speak "息を吸って。", wait 4s, speak "吐き出します。"
+
+let _stopRequested = false;
+
+async function speak(text) {
   stopAudio();
+  _stopRequested = false;
   const ind = document.getElementById('speakingInd');
   ind.classList.add('on');
   document.getElementById('scriptBox').classList.add('speaking');
 
+  // Split on [間 Ns] or [間 N秒] markers
+  const parts = splitWithPauses(text);
+
+  for (let i = 0; i < parts.length; i++) {
+    if (_stopRequested) break;
+    const part = parts[i];
+    if (part.type === 'pause') {
+      await sleep(part.ms);
+    } else if (part.text.trim()) {
+      await speakSegment(part.text.trim());
+    }
+  }
+
+  ind.classList.remove('on');
+}
+
+function splitWithPauses(text) {
+  // Match [間 Ns] or [間 N秒] — N can be integer or decimal
+  const re = /\[間\s*([\d.]+)[秒s]?\]/g;
+  const parts = [];
+  let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push({ type: 'text', text: text.slice(last, m.index) });
+    parts.push({ type: 'pause', ms: Math.round(parseFloat(m[1]) * 1000) });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push({ type: 'text', text: text.slice(last) });
+  return parts;
+}
+
+function speakSegment(text) {
   return new Promise(function(resolve) {
+    if (_stopRequested) { resolve(); return; }
     fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + openaiKey,
       },
-      body: JSON.stringify({ model: 'tts-1-hd', input: text, voice: 'echo', speed: 0.88 }),
+      body: JSON.stringify({ model: 'tts-1-hd', input: text, voice: 'onyx', speed: 0.86 }),
     })
     .then(function(resp) {
       if (!resp.ok) throw new Error('TTS ' + resp.status);
@@ -847,7 +888,6 @@ function speak(text) {
       function cleanup() {
         URL.revokeObjectURL(url);
         currentAudio = null;
-        ind.classList.remove('on');
         resolve();
       }
       audio.onended = cleanup;
@@ -856,13 +896,19 @@ function speak(text) {
     })
     .catch(function(e) {
       console.warn('TTS error:', e);
-      ind.classList.remove('on');
       resolve();
     });
   });
 }
 
+function sleep(ms) {
+  return new Promise(function(resolve) {
+    setTimeout(resolve, ms);
+  });
+}
+
 function stopAudio() {
+  _stopRequested = true;
   if (currentAudio) { currentAudio.pause(); currentAudio = null; }
   document.getElementById('speakingInd').classList.remove('on');
 }
