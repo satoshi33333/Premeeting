@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FOR ME NY — Meeting Facilitator</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Noto+Sans+JP:wght@300;400&display=swap');
+
+  :root {
+    --bg:         #faf9f7;
+    --surface:    #ffffff;
+    --surface2:   #f5f3f0;
+    --border:     #e8e2d9;
+    --border2:    #d4ccc0;
+    --apricot:    #d4845a;
+    --apricot-lt: #e8a882;
+    --apricot-bg: #fdf0e8;
+    --navy:       #2b3a52;
+    --navy-lt:    #4a5e7a;
+    --text:       #3d3530;
+    --text-mid:   #7a6f66;
+    --text-dim:   #b0a89e;
+    --green:      #5a826a;
+    --red:        #c05040;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 13px;
+    font-weight: 300;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* ── Header ── */
+  header {
+    width: 100%;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 36px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .logo-wrap { display: flex; align-items: center; gap: 12px; }
+  .logo-circle {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    border: 1.5px solid var(--apricot);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 11px; font-weight: 400;
+    color: var(--apricot);
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+  .logo-text {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 19px;
+    font-weight: 400;
+    color: var(--navy);
+    letter-spacing: 0.14em;
+  }
+  .logo-text span { color: var(--apricot); }
+  .tagline {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    font-weight: 300;
+  }
+
+  /* ── Screens ── */
+  .screen {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 700px;
+    padding: 44px 24px 60px;
+    gap: 28px;
+  }
+  .screen.active { display: flex; }
+
+  .screen-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 26px;
+    font-weight: 300;
+    color: var(--navy);
+    letter-spacing: 0.1em;
+    text-align: center;
+  }
+  .screen-sub {
+    font-size: 11px;
+    color: var(--text-mid);
+    letter-spacing: 0.06em;
+    text-align: center;
+    margin-top: -16px;
+    line-height: 1.8;
+  }
+
+  /* ── Setup card ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 32px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .field-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--apricot);
+    margin-bottom: 7px;
+    font-weight: 400;
+  }
+
+  .key-row { display: flex; gap: 8px; }
+  .key-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 12px;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+    font-weight: 300;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .key-input:focus { border-color: var(--apricot-lt); }
+  .save-btn {
+    background: var(--apricot);
+    color: #fff;
+    border: none;
+    padding: 9px 18px;
+    cursor: pointer;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  .save-btn:hover { background: var(--apricot-lt); }
+  .key-status { font-size: 10px; color: var(--text-dim); margin-top: 5px; }
+  .key-status.ok { color: var(--green); }
+
+  .divider { border: none; border-top: 1px solid var(--border); }
+
+  /* Participant inputs */
+  .participant-inputs { display: flex; flex-direction: column; gap: 8px; }
+  .p-input-row { display: flex; gap: 8px; align-items: center; }
+  .p-input-row input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 12px;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 13px;
+    font-weight: 300;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .p-input-row input:focus { border-color: var(--apricot-lt); }
+  .p-input-row input::placeholder { color: var(--text-dim); }
+  .remove-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    width: 30px; height: 30px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .remove-btn:hover { border-color: var(--red); color: var(--red); }
+
+  .add-btn {
+    background: transparent;
+    border: 1px dashed var(--border2);
+    color: var(--text-dim);
+    padding: 9px;
+    cursor: pointer;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+    width: 100%;
+    text-align: center;
+    transition: all 0.15s;
+    margin-top: 4px;
+  }
+  .add-btn:hover { border-color: var(--apricot-lt); color: var(--apricot); }
+
+  .start-btn {
+    background: transparent;
+    border: 1.5px solid var(--apricot);
+    color: var(--apricot);
+    padding: 14px 48px;
+    cursor: pointer;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 15px;
+    font-weight: 400;
+    letter-spacing: 0.16em;
+    transition: all 0.2s;
+    align-self: center;
+  }
+  .start-btn:hover { background: var(--apricot); color: #fff; }
+  .start-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .start-btn:disabled:hover { background: transparent; color: var(--apricot); }
+
+  /* ── Facilitator screen ── */
+  .phase-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+  .phase-tag {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--apricot);
+    font-weight: 400;
+  }
+  .speaking-ind {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--apricot);
+    letter-spacing: 0.06em;
+  }
+  .speaking-ind.on { display: flex; }
+  .wave { display: flex; gap: 3px; align-items: center; height: 14px; }
+  .wbar {
+    width: 3px; background: var(--apricot); border-radius: 2px;
+    animation: waveAnim 0.8s ease-in-out infinite;
+  }
+  .wbar:nth-child(2) { animation-delay: 0.15s; }
+  .wbar:nth-child(3) { animation-delay: 0.3s; }
+  .wbar:nth-child(4) { animation-delay: 0.45s; }
+  @keyframes waveAnim { 0%,100% { height: 3px; } 50% { height: 13px; } }
+
+  /* Progress */
+  .progress-track { width: 100%; height: 2px; background: var(--border); position: relative; }
+  .progress-fill { position: absolute; top: 0; left: 0; height: 100%; background: var(--apricot); transition: width 0.5s ease; }
+
+  /* Script display */
+  .script-box {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--apricot);
+    padding: 32px 36px;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 19px;
+    font-weight: 300;
+    color: var(--text-mid);
+    line-height: 2;
+    min-height: 160px;
+    transition: color 0.3s;
+  }
+  .script-box.speaking { color: var(--text); }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .ctrl-btn {
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--text-mid);
+    padding: 10px 24px;
+    cursor: pointer;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+    font-weight: 300;
+    letter-spacing: 0.06em;
+    transition: all 0.15s;
+  }
+  .ctrl-btn:hover { border-color: var(--apricot-lt); color: var(--apricot); }
+  .ctrl-btn.primary { border-color: var(--apricot); color: var(--apricot); font-weight: 400; }
+  .ctrl-btn.primary:hover { background: var(--apricot); color: #fff; }
+  .ctrl-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* ── One Word Story ── */
+  .story-card {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--apricot);
+    padding: 28px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .participant-list { display: flex; flex-direction: column; gap: 5px; }
+  .p-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 16px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    transition: all 0.2s;
+  }
+  .p-row.current {
+    border-color: var(--apricot);
+    background: var(--apricot-bg);
+  }
+  .p-num {
+    font-size: 10px;
+    color: var(--text-dim);
+    width: 18px;
+    text-align: right;
+    flex-shrink: 0;
+    font-family: 'Cormorant Garamond', serif;
+  }
+  .p-name {
+    flex: 1;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 18px;
+    font-weight: 300;
+    color: var(--text-mid);
+    letter-spacing: 0.04em;
+  }
+  .p-row.current .p-name { color: var(--apricot); }
+  .p-badge {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: var(--apricot);
+    opacity: 0;
+    font-weight: 400;
+  }
+  .p-row.current .p-badge { opacity: 1; }
+
+  .story-label {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    font-weight: 400;
+  }
+  .story-words {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 22px;
+    font-weight: 300;
+    color: var(--text);
+    line-height: 1.8;
+    min-height: 50px;
+    letter-spacing: 0.02em;
+  }
+  .story-words .new-word {
+    color: var(--apricot);
+    animation: fadeWord 0.4s ease;
+  }
+  @keyframes fadeWord { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+
+  .word-input-row { display: flex; gap: 8px; }
+  .word-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 14px;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 17px;
+    font-weight: 300;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .word-input:focus { border-color: var(--apricot-lt); }
+  .word-input::placeholder { color: var(--text-dim); font-family: 'Noto Sans JP', sans-serif; font-size: 11px; }
+  .add-word-btn {
+    background: var(--apricot);
+    color: #fff;
+    border: none;
+    padding: 10px 22px;
+    cursor: pointer;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    transition: background 0.15s;
+  }
+  .add-word-btn:hover { background: var(--apricot-lt); }
+
+  .round-ind { font-size: 10px; color: var(--text-dim); text-align: center; letter-spacing: 0.08em; }
+
+  /* ── End screen ── */
+  .end-message {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 20px;
+    font-weight: 300;
+    color: var(--text);
+    line-height: 2;
+    text-align: center;
+    max-width: 520px;
+  }
+  .story-result {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--apricot);
+    padding: 28px 32px;
+    width: 100%;
+  }
+  .story-result-label { font-size: 9px; letter-spacing: 0.18em; color: var(--apricot); margin-bottom: 12px; font-weight: 400; }
+  .story-result-text {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 19px;
+    font-weight: 300;
+    color: var(--text-mid);
+    line-height: 1.9;
+  }
+
+  /* ── Loading dots ── */
+  .ldots { display: inline-flex; gap: 5px; vertical-align: middle; }
+  .ldot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--apricot-lt);
+    animation: ldBounce 1s ease-in-out infinite;
+  }
+  .ldot:nth-child(2) { animation-delay: 0.15s; }
+  .ldot:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes ldBounce { 0%,80%,100% { transform: translateY(0); opacity: 0.4; } 40% { transform: translateY(-6px); opacity: 1; } }
+
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-wrap">
+    <div class="logo-circle">F</div>
+    <div class="logo-text">FOR ME <span>NY</span></div>
+  </div>
+  <div class="tagline">Meeting Facilitator</div>
+</header>
+
+<!-- ── SCREEN 1: SETUP ── -->
+<div class="screen active" id="screenSetup">
+  <div class="screen-title">セッションの準備</div>
+  <div class="screen-sub">APIキーを設定して、参加者の名前を入力してください</div>
+
+  <div class="card">
+    <div>
+      <div class="field-label">Anthropic API Key</div>
+      <div class="key-row">
+        <input class="key-input" id="anthropicKey" type="password" placeholder="sk-ant-..." />
+        <button class="save-btn" onclick="saveAnthropicKey()">保存</button>
+      </div>
+      <div class="key-status" id="anthropicStatus">未設定</div>
+    </div>
+
+    <div>
+      <div class="field-label">OpenAI API Key</div>
+      <div class="key-row">
+        <input class="key-input" id="openaiKey" type="password" placeholder="sk-..." />
+        <button class="save-btn" onclick="saveOpenAIKey()">保存</button>
+      </div>
+      <div class="key-status" id="openaiStatus">未設定</div>
+    </div>
+
+    <hr class="divider" />
+
+    <div>
+      <div class="field-label">参加者の名前</div>
+      <div class="participant-inputs" id="participantInputs"></div>
+      <button class="add-btn" onclick="addParticipantField()">＋ 参加者を追加</button>
+    </div>
+  </div>
+
+  <button class="start-btn" id="startBtn" onclick="startSession()" disabled>
+    セッションを開始する
+  </button>
+</div>
+
+<!-- ── SCREEN 2: FACILITATOR ── -->
+<div class="screen" id="screenFacilitator">
+
+  <div class="phase-row">
+    <div class="phase-tag" id="phaseTag">— Intro —</div>
+    <div class="speaking-ind" id="speakingInd">
+      <div class="wave">
+        <div class="wbar"></div><div class="wbar"></div>
+        <div class="wbar"></div><div class="wbar"></div>
+      </div>
+      話しています
+    </div>
+  </div>
+
+  <div class="progress-track">
+    <div class="progress-fill" id="progressFill" style="width:0%"></div>
+  </div>
+
+  <div class="script-box" id="scriptBox">
+    <div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>
+  </div>
+
+  <!-- One Word Story — hidden until that phase -->
+  <div class="story-card" id="storyCard" style="display:none">
+    <div class="field-label">One Word Story</div>
+    <div class="participant-list" id="participantList"></div>
+    <div>
+      <div class="story-label">みんなで作っている物語</div>
+      <div class="story-words" id="storyWords">（まだ始まっていません）</div>
+    </div>
+    <div class="word-input-row">
+      <input class="word-input" id="wordInput" placeholder="一語を入力して Enter…" onkeydown="if(event.key==='Enter')addWord()" />
+      <button class="add-word-btn" onclick="addWord()">追加</button>
+    </div>
+    <div class="round-ind" id="roundInd"></div>
+  </div>
+
+  <div class="controls" id="mainControls">
+    <button class="ctrl-btn" id="replayBtn" onclick="replayCurrentPhase()">もう一度再生</button>
+    <button class="ctrl-btn primary" id="nextBtn" onclick="nextPhase()">次へ ›</button>
+  </div>
+
+</div>
+
+<!-- ── SCREEN 3: END ── -->
+<div class="screen" id="screenEnd">
+  <div class="screen-title">お疲れ様でした</div>
+  <div class="end-message" id="endMessage">
+    <div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>
+  </div>
+  <div class="story-result" id="storyResult" style="display:none">
+    <div class="story-result-label">みんなで作った物語</div>
+    <div class="story-result-text" id="storyResultText"></div>
+  </div>
+  <button class="ctrl-btn" onclick="resetSession()" style="margin-top:8px">最初に戻る</button>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────
+let anthropicKey = localStorage.getItem('formeny_anthropic_key') || '';
+let openaiKey    = localStorage.getItem('formeny_openai_key')    || '';
+let participants = [];
+let currentPhaseIdx = 0;
+let currentAudio = null;
+let storyWords = [];
+let currentTurnIdx = 0;
+let roundCount = 0;
+let currentScript = '';
+
+const PHASES = ['intro', 'bodyscan', 'impro_intro', 'impro_game', 'outro'];
+const PHASE_TAGS = {
+  intro:       '— Intro —',
+  bodyscan:    '— Part 1：ボディスキャン —',
+  impro_intro: '— Part 2：One Word Story 説明 —',
+  impro_game:  '— One Word Story —',
+  outro:       '— クロージング —',
+};
+const PROGRESS_MAP = { intro: 10, bodyscan: 35, impro_intro: 60, impro_game: 80, outro: 100 };
+
+// ── Init ──────────────────────────────────────────────────────
+(function init() {
+  if (anthropicKey) { setKeyOk('anthropicStatus'); document.getElementById('anthropicKey').value = '••••••••'; }
+  if (openaiKey)    { setKeyOk('openaiStatus');    document.getElementById('openaiKey').value    = '••••••••'; }
+  addParticipantField();
+  addParticipantField();
+  addParticipantField();
+  checkStartable();
+})();
+
+// ── Key helpers ───────────────────────────────────────────────
+function saveAnthropicKey() {
+  const v = document.getElementById('anthropicKey').value.trim();
+  if (!v || v === '••••••••') return;
+  anthropicKey = v;
+  localStorage.setItem('formeny_anthropic_key', v);
+  document.getElementById('anthropicKey').value = '••••••••';
+  setKeyOk('anthropicStatus');
+  checkStartable();
+}
+function saveOpenAIKey() {
+  const v = document.getElementById('openaiKey').value.trim();
+  if (!v || v === '••••••••') return;
+  openaiKey = v;
+  localStorage.setItem('formeny_openai_key', v);
+  document.getElementById('openaiKey').value = '••••••••';
+  setKeyOk('openaiStatus');
+  checkStartable();
+}
+function setKeyOk(id) {
+  const el = document.getElementById(id);
+  el.textContent = '設定済み ✓';
+  el.className = 'key-status ok';
+}
+
+// ── Participant fields ────────────────────────────────────────
+function addParticipantField() {
+  const container = document.getElementById('participantInputs');
+  const idx = container.children.length;
+  const row = document.createElement('div');
+  row.className = 'p-input-row';
+  row.innerHTML =
+    '<input type="text" placeholder="参加者 ' + (idx + 1) + '" oninput="checkStartable()" />' +
+    '<button class="remove-btn" onclick="removeParticipantField(this)">×</button>';
+  container.appendChild(row);
+  checkStartable();
+}
+function removeParticipantField(btn) {
+  btn.parentElement.remove();
+  checkStartable();
+}
+function getParticipantNames() {
+  return Array.from(document.querySelectorAll('#participantInputs input'))
+    .map(function(i) { return i.value.trim(); })
+    .filter(Boolean);
+}
+function checkStartable() {
+  const names = getParticipantNames();
+  const ok = anthropicKey && openaiKey && names.length >= 2;
+  document.getElementById('startBtn').disabled = !ok;
+}
+
+// ── Session ───────────────────────────────────────────────────
+async function startSession() {
+  participants = getParticipantNames();
+  currentPhaseIdx = 0;
+  storyWords = [];
+  currentTurnIdx = 0;
+  roundCount = 0;
+  currentScript = '';
+  document.getElementById('screenSetup').classList.remove('active');
+  document.getElementById('screenFacilitator').classList.add('active');
+  document.getElementById('nextBtn').textContent = '次へ ›';
+  await runPhase(PHASES[0]);
+}
+
+// ── Phase runner ──────────────────────────────────────────────
+async function runPhase(phase) {
+  // Update phase UI
+  document.getElementById('phaseTag').textContent = PHASE_TAGS[phase] || '';
+  document.getElementById('progressFill').style.width = (PROGRESS_MAP[phase] || 0) + '%';
+  document.getElementById('storyCard').style.display = 'none';
+  document.getElementById('scriptBox').style.display = 'block';
+  document.getElementById('mainControls').style.display = 'flex';
+  document.getElementById('replayBtn').disabled = false;
+  document.getElementById('nextBtn').disabled = false;
+
+  if (phase === 'impro_game') {
+    document.getElementById('scriptBox').style.display = 'none';
+    document.getElementById('storyCard').style.display = 'flex';
+    buildParticipantList();
+    updateStoryDisplay();
+    document.getElementById('wordInput').focus();
+    return;
+  }
+
+  document.getElementById('scriptBox').className = 'script-box';
+  document.getElementById('scriptBox').innerHTML =
+    '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
+  document.getElementById('replayBtn').disabled = true;
+  document.getElementById('nextBtn').disabled = true;
+
+  const script = await generateScript(phase);
+  currentScript = script;
+  document.getElementById('scriptBox').className = 'script-box speaking';
+  document.getElementById('scriptBox').textContent = script;
+  document.getElementById('replayBtn').disabled = false;
+  document.getElementById('nextBtn').disabled = false;
+  await speak(script);
+}
+
+// ── Navigation ────────────────────────────────────────────────
+async function nextPhase() {
+  stopAudio();
+  currentPhaseIdx++;
+  if (currentPhaseIdx >= PHASES.length) {
+    await endSession();
+    return;
+  }
+  await runPhase(PHASES[currentPhaseIdx]);
+}
+
+async function replayCurrentPhase() {
+  const phase = PHASES[currentPhaseIdx];
+  if (phase === 'impro_game') return;
+  stopAudio();
+  if (currentScript) await speak(currentScript);
+}
+
+// ── One Word Story ────────────────────────────────────────────
+function buildParticipantList() {
+  const list = document.getElementById('participantList');
+  list.innerHTML = '';
+  participants.forEach(function(name, i) {
+    const row = document.createElement('div');
+    row.className = 'p-row' + (i === currentTurnIdx ? ' current' : '');
+    row.id = 'prow-' + i;
+    row.innerHTML =
+      '<span class="p-num">' + (i + 1) + '</span>' +
+      '<span class="p-name">' + esc(name) + '</span>' +
+      '<span class="p-badge">▶ 今ここ</span>';
+    list.appendChild(row);
+  });
+}
+
+function updateHighlight() {
+  participants.forEach(function(_, i) {
+    const row = document.getElementById('prow-' + i);
+    if (!row) return;
+    row.className = 'p-row' + (i === currentTurnIdx ? ' current' : '');
+  });
+}
+
+function addWord() {
+  const input = document.getElementById('wordInput');
+  const word = input.value.trim();
+  if (!word) return;
+  storyWords.push({ word: word, person: participants[currentTurnIdx] });
+  input.value = '';
+  currentTurnIdx = (currentTurnIdx + 1) % participants.length;
+  if (currentTurnIdx === 0) roundCount++;
+  updateStoryDisplay();
+  updateHighlight();
+  document.getElementById('roundInd').textContent = roundCount > 0 ? 'ラウンド ' + roundCount + ' 周目' : '';
+  if (roundCount >= 3 && currentTurnIdx === 0) {
+    document.getElementById('nextBtn').textContent = 'セッションを終わる ›';
+  }
+  input.focus();
+}
+
+function updateStoryDisplay() {
+  const el = document.getElementById('storyWords');
+  if (storyWords.length === 0) {
+    el.textContent = '（まだ始まっていません）';
+    return;
+  }
+  el.innerHTML = storyWords.map(function(w, i) {
+    const cls = i === storyWords.length - 1 ? ' class="new-word"' : '';
+    return '<span' + cls + '>' + esc(w.word) + '</span>';
+  }).join(' ');
+}
+
+// ── Script generation (Claude API) ───────────────────────────
+async function generateScript(phase) {
+  const names = participants.join('、');
+  const count = participants.length;
+
+  const prompts = {
+    intro:
+      'あなたはFOR ME NYのAIファシリテーター「フォーミー」です。\n' +
+      '今日のミーティング参加者は' + count + '名（' + names + '）です。\n' +
+      'ミーティング前ウォームアップの「イントロ」を話してください。\n' +
+      '含めること：温かい歓迎、今日のセッションの目的（答えを押しつけない・気づきを引き出す）、「いまこの瞬間」に戻ること。\n' +
+      '話し言葉のみ、約1分、毎回少し違う表現で。余分な記号・箇条書き不要。',
+
+    bodyscan:
+      'あなたはFOR ME NYのAIファシリテーター「フォーミー」です。\n' +
+      '参加者' + count + '名にボディスキャンのガイドを話してください。\n' +
+      '流れ：ゆっくりした呼吸の誘導→足先から頭まで身体への意識→「体の中にスペースができた」感覚で締め。\n' +
+      '話し言葉のみ、約3分、間は多めに。毎回少し違う表現で。余分な記号・箇条書き不要。',
+
+    impro_intro:
+      'あなたはFOR ME NYのAIファシリテーター「フォーミー」です。\n' +
+      '「One Word Story」の説明をしてください。参加者：' + names + '。\n' +
+      '含めること：ルール（一人ずつ一語ずつ）、大切なのは「つながること」、失敗しても笑ってOK、参加者の名前を呼びかける、「では始めましょう」で締める。\n' +
+      '話し言葉のみ、約1分、毎回少し違う表現で。余分な記号・箇条書き不要。',
+
+    outro:
+      'あなたはFOR ME NYのAIファシリテーター「フォーミー」です。\n' +
+      'One Word Storyが終わりました。' + count + '名（' + names + '）への締めのあいさつをしてください。\n' +
+      '含めること：体験を振り返る温かいコメント、ここで生まれたつながりをミーティングに持ち込む提案、短い別れのあいさつ。\n' +
+      '話し言葉のみ、約30秒、毎回少し違う表現で。余分な記号・箇条書き不要。',
+  };
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': anthropicKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 800,
+        messages: [{ role: 'user', content: prompts[phase] }],
+      }),
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message);
+    return data.content[0].text.trim();
+  } catch (e) {
+    console.error('Claude API error:', e);
+    return fallback(phase);
+  }
+}
+
+function fallback(phase) {
+  const fb = {
+    intro: 'こんにちは。私はAIファシリテーターのフォーミーです。今日の時間では、みなさんが自然体で発想し、お互いの感覚を共有できるよう、サポートしていきます。難しく考えずに、いまこの瞬間を感じながら進めていきましょう。',
+    bodyscan: 'まず、軽く息を吐きましょう。鼻からゆっくり息を吸って、口から静かに吐き出します。足のつま先に意識を向けてください。ふくらはぎ、太もも、お腹、胸、肩、首、顔。それぞれの部分が呼吸とともに、いまここに戻ってきます。深く吸って、吐いて。体の中に少しスペースができましたね。',
+    impro_intro: '次は「ワンワード・ストーリー」です。一人ずつ、一つの言葉だけを言っていくアクティビティです。思いついた言葉をそのまま口に出すだけでOK。笑っても止まっても大丈夫。大切なのはつながること。では始めましょう。',
+    outro: 'お疲れ様でした。みなさんが紡いだ言葉と笑顔、どうぞこれからのミーティングの中にも持ち込んでください。それでは、始めましょう。',
+  };
+  return fb[phase] || '';
+}
+
+// ── TTS (OpenAI) ──────────────────────────────────────────────
+function speak(text) {
+  stopAudio();
+  const ind = document.getElementById('speakingInd');
+  ind.classList.add('on');
+  document.getElementById('scriptBox').classList.add('speaking');
+
+  return new Promise(function(resolve) {
+    fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + openaiKey,
+      },
+      body: JSON.stringify({ model: 'tts-1-hd', input: text, voice: 'echo', speed: 0.88 }),
+    })
+    .then(function(resp) {
+      if (!resp.ok) throw new Error('TTS ' + resp.status);
+      return resp.blob();
+    })
+    .then(function(blob) {
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      currentAudio = audio;
+      function cleanup() {
+        URL.revokeObjectURL(url);
+        currentAudio = null;
+        ind.classList.remove('on');
+        resolve();
+      }
+      audio.onended = cleanup;
+      audio.onerror = cleanup;
+      audio.play().catch(cleanup);
+    })
+    .catch(function(e) {
+      console.warn('TTS error:', e);
+      ind.classList.remove('on');
+      resolve();
+    });
+  });
+}
+
+function stopAudio() {
+  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+  document.getElementById('speakingInd').classList.remove('on');
+}
+
+// ── End session ───────────────────────────────────────────────
+async function endSession() {
+  stopAudio();
+  document.getElementById('screenFacilitator').classList.remove('active');
+  document.getElementById('screenEnd').classList.add('active');
+
+  // Show story if any words were added
+  if (storyWords.length > 0) {
+    const story = storyWords.map(function(w) { return w.word; }).join(' ');
+    document.getElementById('storyResult').style.display = 'block';
+    document.getElementById('storyResultText').textContent = story;
+  }
+
+  const script = await generateScript('outro');
+  document.getElementById('endMessage').textContent = script;
+  await speak(script);
+}
+
+function resetSession() {
+  stopAudio();
+  storyWords = [];
+  currentPhaseIdx = 0;
+  currentTurnIdx = 0;
+  roundCount = 0;
+  currentScript = '';
+  document.getElementById('screenEnd').classList.remove('active');
+  document.getElementById('screenFacilitator').classList.remove('active');
+  document.getElementById('screenSetup').classList.add('active');
+  document.getElementById('nextBtn').textContent = '次へ ›';
+  document.getElementById('storyResult').style.display = 'none';
+  document.getElementById('endMessage').innerHTML = '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
+}
+
+// ── Utils ─────────────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+</script>
+</body>
+</html>
