@@ -1516,8 +1516,12 @@ window._startParticipantListener = function() {
       return;
     }
 
-    // impro_game中のstoryWords更新は常に処理（phaseIdxが変わらなくても）
-    if (phase === 'impro_game' && _lastPhaseIdx === 3) {
+    // フェーズ進行
+    const incomingPhaseIdx = typeof data.phaseIdx === 'number' ? data.phaseIdx : 0;
+    const phaseChanged = (incomingPhaseIdx !== _lastPhaseIdx);
+
+    // impro_game中のstoryWords更新：phaseが変わらなくても常に処理
+    if (phase === 'impro_game' && !phaseChanged) {
       const remoteWords2 = data.storyWords || [];
       const remoteLen2 = Array.isArray(remoteWords2) ? remoteWords2.length
         : Object.keys(remoteWords2).length;
@@ -1536,15 +1540,13 @@ window._startParticipantListener = function() {
         document.getElementById('recLabel').textContent = '押している間、録音';
         document.getElementById('recStatus').textContent = '';
       }
-      return; // 以降の処理（phaseIdx変化処理）はスキップ
+      return; // storyWords更新のみ、以降のフェーズ処理はスキップ
     }
 
-    // フェーズ進行 — phaseIdxが変わった時だけ処理
-    const incomingPhaseIdx = typeof data.phaseIdx === 'number' ? data.phaseIdx : 0;
-    if (phase && incomingPhaseIdx !== _lastPhaseIdx) {
+    // phaseIdxが変わった時だけフェーズ処理
+    if (phase && phaseChanged) {
       _lastPhaseIdx = incomingPhaseIdx;
-      _isSpeaking = false; // 新フェーズなのでフラグリセット
-      // 前のフェーズのAI音声を即座に停止
+      _isSpeaking = false;
       stopAudio();
       participants = data.participants || [];
       currentPhaseIdx = incomingPhaseIdx;
