@@ -886,6 +886,8 @@ async function runPhase(phase) {
   document.getElementById('nextBtn').disabled = false;
 
   if (phase === 'impro_game') {
+    // scriptをクリア — 参加者側がimpro_game移行時に前フェーズのscriptで誤再生しないよう
+    if (IS_FACILITATOR()) { fbWrite('session/script', ''); }
     document.getElementById('scriptBox').style.display = 'none';
     document.getElementById('storyCard').style.display = 'flex';
     document.getElementById('storyControls').style.display = 'flex';
@@ -1018,7 +1020,7 @@ function getBestMimeType() {
 
 // MIMEタイプからWhisper用のファイル拡張子を決める
 function getExtForMime(mimeType) {
-  if (mimeType.includes('mp4'))  return 'mp4';
+  if (mimeType.includes('mp4'))  return 'm4a'; // Whisperはm4a拡張子を要求
   if (mimeType.includes('ogg'))  return 'ogg';
   return 'webm';
 }
@@ -1039,7 +1041,7 @@ async function startRecording() {
       : new MediaRecorder(stream);
     console.log('[Rec] using mimeType:', mediaRecorder.mimeType);
     mediaRecorder.ondataavailable = function(e) { if (e.data.size > 0) recChunks.push(e.data); };
-    mediaRecorder.start();
+    mediaRecorder.start(100); // 100msごとにdataavailableを発火してデータを確実に取得
   } catch(e) {
     console.warn('Mic error:', e);
     isRecording = false;
@@ -1067,6 +1069,13 @@ async function stopRecording() {
   const audioBlob = new Blob(recChunks, { type: mimeType });
   recChunks = [];
   console.log('[Rec] blob size:', audioBlob.size, 'mimeType:', mimeType);
+
+  if (audioBlob.size === 0) {
+    document.getElementById('recStatus').textContent = '録音が短すぎます。もう少し長く押してください';
+    document.getElementById('recBtn').disabled = false;
+    document.getElementById('recLabel').textContent = '押している間、録音';
+    return;
+  }
 
   // Send to Whisper
   const word = await transcribeWithWhisper(audioBlob, mimeType);
