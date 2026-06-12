@@ -1522,32 +1522,42 @@ window._startParticipantListener = function() {
       } else {
         // intro / bodyscan / impro_intro:
         stopAudio();
-        const fbScript = data.script || '';
-        if (fbScript && !_isSpeaking) {
-          _isSpeaking = true;
-          currentScript = fbScript;
-          // テキストを先に表示（TTS失敗でも読めるように）
-          const displayText = fbScript.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
-          document.getElementById('scriptBox').className = 'script-box speaking';
-          document.getElementById('scriptBox').textContent = displayText;
-          // TTS再生（失敗しても_isSpeakingをfalseに戻す）
-          speak(fbScript).then(function() {
-            _isSpeaking = false;
-          }).catch(function(e) {
-            console.warn('TTS failed, text already shown:', e);
-            _isSpeaking = false;
-          });
-        } else if (!fbScript) {
-          // scriptがまだ届いていない → ローディング表示で待つ
-          document.getElementById('scriptBox').className = 'script-box';
-          document.getElementById('scriptBox').innerHTML =
-            '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
-        }
-        // fbScript があって _isSpeaking が true の場合はすでに表示・再生中なので何もしない
+        _participantPlayScript(data.script || '');
       }
+    }
+
+    // phaseは同じでもscriptだけ変わった場合（空→中身あり）に対応
+    // ローディング中かつscriptが届いた時に再生
+    const currentBoxIsLoading = document.getElementById('scriptBox').querySelector('.ldots') !== null;
+    if (currentBoxIsLoading && data.script && !_isSpeaking &&
+        phase !== 'impro_game' && phase !== 'outro') {
+      _participantPlayScript(data.script);
     }
   });
 };
+
+// Participantがscriptを表示・再生するヘルパー
+function _participantPlayScript(fbScript) {
+  if (!fbScript) {
+    // まだ届いていない → ローディング
+    document.getElementById('scriptBox').className = 'script-box';
+    document.getElementById('scriptBox').innerHTML =
+      '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
+    return;
+  }
+  if (_isSpeaking) return; // すでに再生中
+  _isSpeaking = true;
+  currentScript = fbScript;
+  const displayText = fbScript.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
+  document.getElementById('scriptBox').className = 'script-box speaking';
+  document.getElementById('scriptBox').textContent = displayText;
+  speak(fbScript).then(function() {
+    _isSpeaking = false;
+  }).catch(function(e) {
+    console.warn('TTS failed, text shown:', e);
+    _isSpeaking = false;
+  });
+}
 
 // ── Firebase: endSession時に全員に通知 ───────────────────────
 const _origEndSession = typeof endSession === 'function' ? endSession : null;
