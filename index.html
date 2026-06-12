@@ -857,7 +857,9 @@ async function startSession() {
 // ── Phase runner ──────────────────────────────────────────────
 async function runPhase(phase) {
   // Firebase: フェーズ変更を全参加者に同期（ファシリテーターのみ書き込む）
+  // scriptを先に空にしてから、フェーズを書き込む（参加者が古いscriptを使わないよう）
   if (IS_FACILITATOR()) {
+    fbWrite('session/script',   '');  // 古いscriptをまずクリア
     fbWrite('session/phase',    phase);
     fbWrite('session/phaseIdx', currentPhaseIdx);
     fbWrite('session/status',   phase === 'outro' ? 'ending' : 'running');
@@ -1485,19 +1487,20 @@ window._startParticipantListener = function() {
 
       } else {
         // intro / bodyscan / impro_intro:
-        // FirebaseのスクリプトをそのままTTS再生（CORSエラー回避のためClaudeを呼ばない）
+        // script が届くまでローディング表示で待つ（古いscriptは使わない）
         stopAudio();
-        document.getElementById('scriptBox').innerHTML =
-          '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
         const fbScript = data.script || '';
         if (fbScript && !_isSpeaking) {
-          _isSpeaking = true; // このフェーズでは一度だけ再生
+          // scriptが届いていてまだ再生していない場合のみ再生
+          _isSpeaking = true;
           currentScript = fbScript;
           document.getElementById('scriptBox').className = 'script-box speaking';
           document.getElementById('scriptBox').textContent =
             fbScript.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
           speak(fbScript).then(function() { _isSpeaking = false; });
-        } else if (!fbScript) {
+        } else {
+          // scriptがまだ届いていない（空）→ ローディング表示で待つ
+          document.getElementById('scriptBox').className = 'script-box';
           document.getElementById('scriptBox').innerHTML =
             '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
         }
