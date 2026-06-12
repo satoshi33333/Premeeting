@@ -490,8 +490,41 @@
     <div class="logo-circle">F</div>
     <div class="logo-text">FOR ME <span>NY</span></div>
   </div>
-  <div class="tagline">Meeting Facilitator</div>
+  <div style="display:flex; align-items:center; gap:16px;">
+    <div class="tagline">Meeting Facilitator</div>
+    <div id="roleBadge" style="font-size:10px; letter-spacing:0.08em;"></div>
+  </div>
 </header>
+
+<!-- ── SCREEN 0: WAITING (参加者用) ── -->
+<div class="screen" id="screenWaiting">
+  <div style="display:flex; flex-direction:column; align-items:center; gap:24px; padding-top:40px;">
+    <div class="screen-title">セッションを待っています</div>
+    <div style="font-family:'Cormorant Garamond',serif; font-size:18px; color:var(--text-mid); text-align:center; line-height:2;">
+      ファシリテーターがセッションを開始するまで<br>このページを開いたままにしてください
+    </div>
+    <div id="waitingStatus" style="font-size:11px; color:var(--text-dim); letter-spacing:0.1em;">
+      <div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>
+    </div>
+    <!-- 参加者もAPIキーが必要（音声再生・録音のため） -->
+    <div class="card" style="width:100%; max-width:500px;">
+      <div class="field-label">OpenAI API Key（音声認識）</div>
+      <div class="key-row">
+        <input class="key-input" id="openaiKeyP" type="password" placeholder="sk-..." />
+        <button class="save-btn" onclick="saveOpenAIKeyP()">保存</button>
+      </div>
+      <div class="key-status" id="openaiStatusP">未設定</div>
+      <div style="margin-top:16px;">
+        <div class="field-label">Google Cloud API Key（音声合成）</div>
+        <div class="key-row">
+          <input class="key-input" id="googleKeyP" type="password" placeholder="AIza..." />
+          <button class="save-btn" onclick="saveGoogleKeyP()">保存</button>
+        </div>
+        <div class="key-status" id="googleStatusP">未設定</div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ── SCREEN 1: SETUP ── -->
 <div class="screen active" id="screenSetup">
@@ -619,11 +652,68 @@
   <button class="ctrl-btn" onclick="resetSession()" style="margin-top:8px">最初に戻る</button>
 </div>
 
+<!-- Firebase CDN -->
+<script type="module">
+// ════════════════════════════════════════════════════════════════
+//  Firebase Realtime Database 統合
+//  ファシリテーター: ?role=facilitator をURLに付ける
+//  参加者:          URLをそのまま共有（例: satoshi33333.github.io/Premeeting/）
+// ════════════════════════════════════════════════════════════════
+import { initializeApp }         from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getDatabase, ref, set, onValue, push, serverTimestamp }
+                                  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+
+const firebaseConfig = {
+  apiKey:            "AIzaSyBLQBuuKUTacvWAXvkk_Bh2jVh1W9DtwdA",
+  authDomain:        "formeny-meeting.firebaseapp.com",
+  databaseURL:       "https://formeny-meeting-default-rtdb.firebaseio.com",
+  projectId:         "formeny-meeting",
+  storageBucket:     "formeny-meeting.firebasestorage.app",
+  messagingSenderId: "556022386686",
+  appId:             "1:556022386686:web:1d7aefbf49e312538e7aaf"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db    = getDatabase(fbApp);
+
+// ロール判定: URLに ?role=facilitator があればファシリテーター
+const IS_FACILITATOR = new URLSearchParams(window.location.search).get('role') === 'facilitator';
+window._IS_FACILITATOR = IS_FACILITATOR;
+window._fbDb = db;
+window._fbRef = ref;
+window._fbSet = set;
+window._fbOnValue = onValue;
+window._fbPush = push;
+window._fbServerTimestamp = serverTimestamp;
+
+// ロール表示バッジをセット（DOMContentLoaded後）
+document.addEventListener('DOMContentLoaded', function() {
+  const badge = document.getElementById('roleBadge');
+  if (badge) {
+    badge.textContent = IS_FACILITATOR ? '🎤 ファシリテーター' : '👤 参加者';
+    badge.style.color = IS_FACILITATOR ? 'var(--apricot)' : 'var(--text-dim)';
+  }
+
+  if (!IS_FACILITATOR) {
+    // 参加者：セットアップ画面を非表示、待機画面を表示
+    document.getElementById('screenSetup').classList.remove('active');
+    document.getElementById('screenWaiting').classList.add('active');
+    // Firebaseのセッション状態を監視
+    window._startParticipantListener();
+  }
+});
+</script>
+
 <script>
 // ── State ─────────────────────────────────────────────────────
 let anthropicKey = localStorage.getItem('formeny_anthropic_key') || '';
 let googleKey    = localStorage.getItem('formeny_google_key')    || '';
 let openaiKey    = localStorage.getItem('formeny_openai_key')    || '';
+
+// Firebase helpers (set by module script above)
+const IS_FACILITATOR = () => window._IS_FACILITATOR || false;
+const fbWrite = (path, data) => { if(window._fbDb) window._fbSet(window._fbRef(window._fbDb, path), data); };
+const fbListen = (path, cb) => { if(window._fbDb) window._fbOnValue(window._fbRef(window._fbDb, path), snap => cb(snap.val())); };
 let participants = [];
 let currentPhaseIdx = 0;
 let currentAudio = null;
@@ -651,6 +741,9 @@ const PROGRESS_MAP = { intro: 10, bodyscan: 35, impro_intro: 60, impro_game: 80,
   if (anthropicKey) { setKeyOk('anthropicStatus'); document.getElementById('anthropicKey').value = '••••••••'; }
   if (googleKey)    { setKeyOk('googleStatus');    document.getElementById('googleKey').value    = '••••••••'; }
   if (openaiKey)    { setKeyOk('openaiStatus');    document.getElementById('openaiKey').value    = '••••••••'; }
+  // 参加者用キー復元
+  if (openaiKey)  { setKeyOk('openaiStatusP');  if(document.getElementById('openaiKeyP'))  document.getElementById('openaiKeyP').value  = '••••••••'; }
+  if (googleKey)  { setKeyOk('googleStatusP');  if(document.getElementById('googleKeyP'))  document.getElementById('googleKeyP').value  = '••••••••'; }
   addParticipantField();
   addParticipantField();
   addParticipantField();
@@ -730,11 +823,26 @@ async function startSession() {
   document.getElementById('screenSetup').classList.remove('active');
   document.getElementById('screenFacilitator').classList.add('active');
   document.getElementById('nextBtn').textContent = '次へ ›';
+  // Firebase: セッション開始を全参加者に通知
+  fbWrite('session', {
+    phase: PHASES[0],
+    phaseIdx: 0,
+    participants: participants,
+    storyWords: [],
+    status: 'running',
+    startedAt: Date.now(),
+  });
   await runPhase(PHASES[0]);
 }
 
 // ── Phase runner ──────────────────────────────────────────────
 async function runPhase(phase) {
+  // Firebase: フェーズ変更を全参加者に同期（ファシリテーターのみ書き込む）
+  if (IS_FACILITATOR()) {
+    fbWrite('session/phase',    phase);
+    fbWrite('session/phaseIdx', currentPhaseIdx);
+    fbWrite('session/status',   phase === 'outro' ? 'ending' : 'running');
+  }
   // Update phase UI
   document.getElementById('phaseTag').textContent = PHASE_TAGS[phase] || '';
   document.getElementById('progressFill').style.width = (PROGRESS_MAP[phase] || 0) + '%';
@@ -908,6 +1016,9 @@ async function stopRecording() {
   // Save word + blob
   storyWords.push({ word: word, person: participants[currentTurnIdx], blob: audioBlob });
   storyAudioBlobs.push(audioBlob);
+  // Firebase: 物語の単語を全参加者に同期
+  fbWrite('session/storyWords', storyWords.map(function(w) { return { word: w.word, person: w.person }; }));
+  fbWrite('session/turnIdx', (currentTurnIdx + 1) % participants.length);
 
   // Advance turn
   currentTurnIdx = (currentTurnIdx + 1) % participants.length;
@@ -1160,6 +1271,11 @@ function stopAudio() {
 function endSession() {
   // Do NOT call stopAudio() here — outro TTS already finished naturally
   _stopRequested = false;
+  // Firebase: セッション終了を全参加者に通知
+  if (IS_FACILITATOR()) {
+    fbWrite('session/status', 'ended');
+    fbWrite('session/storyWords', storyWords.map(function(w) { return { word: w.word, person: w.person }; }));
+  }
   document.getElementById('screenFacilitator').classList.remove('active');
   document.getElementById('screenEnd').classList.add('active');
 
@@ -1271,6 +1387,93 @@ function resetSession() {
   document.getElementById('storyImageLoading').style.display = 'flex';
   document.getElementById('storyImageLoading').innerHTML = '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>絵を生成中…';
   document.getElementById('endMessage').innerHTML = '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
+}
+
+// ── Participant key save functions ───────────────────────────
+function saveOpenAIKeyP() {
+  const v = document.getElementById('openaiKeyP').value.trim();
+  if (!v || v === '••••••••') return;
+  openaiKey = v;
+  localStorage.setItem('formeny_openai_key', v);
+  document.getElementById('openaiKeyP').value = '••••••••';
+  setKeyOk('openaiStatusP');
+}
+function saveGoogleKeyP() {
+  const v = document.getElementById('googleKeyP').value.trim();
+  if (!v || v === '••••••••') return;
+  googleKey = v;
+  localStorage.setItem('formeny_google_key', v);
+  document.getElementById('googleKeyP').value = '••••••••';
+  setKeyOk('googleStatusP');
+}
+
+// ── Participant Firebase listener ─────────────────────────────
+window._startParticipantListener = function() {
+  fbListen('session', function(data) {
+    if (!data) {
+      document.getElementById('waitingStatus').textContent = 'セッション開始を待っています…';
+      return;
+    }
+
+    const status = data.status;
+    const phase  = data.phase;
+
+    // セッション終了
+    if (status === 'ended') {
+      document.getElementById('screenFacilitator').classList.remove('active');
+      document.getElementById('screenWaiting').classList.remove('active');
+      const endEl = document.getElementById('screenEnd');
+      endEl.classList.add('active');
+      // 物語テキストを表示
+      const words = data.storyWords || [];
+      if (words.length > 0) {
+        const storyText = words.map(function(w) { return w.word; }).join(' ');
+        document.getElementById('replayStoryArea').style.display = 'flex';
+        document.getElementById('replayStoryWords').textContent = storyText;
+        document.getElementById('replayAllBtn').style.display = 'none'; // 参加者は声再生不可
+        document.getElementById('storyImageWrap').style.display = 'flex';
+        generateStoryImage(storyText);
+      }
+      document.getElementById('endMessage').textContent = 'セッションが終了しました。お疲れ様でした！';
+      return;
+    }
+
+    // フェーズ進行
+    if (phase) {
+      participants = data.participants || [];
+      currentPhaseIdx = data.phaseIdx || 0;
+
+      // 待機→ファシリテーター画面へ切り替え
+      document.getElementById('screenWaiting').classList.remove('active');
+      const facEl = document.getElementById('screenFacilitator');
+      if (!facEl.classList.contains('active')) {
+        facEl.classList.add('active');
+        document.getElementById('waitingStatus').textContent = '';
+      }
+
+      // UIだけ更新（音声はファシリテーターの画面共有から流れる）
+      document.getElementById('phaseTag').textContent = PHASE_TAGS[phase] || '';
+      document.getElementById('progressFill').style.width = (PROGRESS_MAP[phase] || 0) + '%';
+
+      // One Word Story の進捗を同期
+      if (phase === 'impro_game' && data.storyWords) {
+        storyWords = data.storyWords.map(function(w) { return { word: w.word, person: w.person }; });
+        updateStoryDisplay();
+        if (data.participants) {
+          currentTurnIdx = data.turnIdx || 0;
+          buildParticipantList();
+          updateHighlight();
+        }
+      }
+    }
+  });
+};
+
+// ── Firebase: endSession時に全員に通知 ───────────────────────
+const _origEndSession = typeof endSession === 'function' ? endSession : null;
+function endSessionWithFirebase() {
+  fbWrite('session/status', 'ended');
+  endSession();
 }
 
 // ── Utils ─────────────────────────────────────────────────────
