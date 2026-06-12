@@ -1397,6 +1397,17 @@ window._startParticipantListener = function() {
     const status = data.status;
     const phase  = data.phase;
 
+    // sessionIdが変わったらParticipant側の状態をリセット（新しいセッション開始を検知）
+    const incomingSessionId = data.sessionId || '';
+    if (incomingSessionId && incomingSessionId !== window._participantSessionId) {
+      window._participantSessionId = incomingSessionId;
+      _lastPhaseIdx = -1;
+      _lastStoryLen = 0;
+      _isSpeaking = false;
+      stopAudio();
+      console.log('[Participant] New session detected:', incomingSessionId);
+    }
+
     // waiting状態（セッション未開始）は待機画面のまま
     if (status === 'waiting' || !status) {
       document.getElementById('waitingStatus').textContent = 'セッション開始を待っています…';
