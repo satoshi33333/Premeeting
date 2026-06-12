@@ -1001,6 +1001,28 @@ async function announceNextTurn() {
 }
 
 // ── MediaRecorder recording ────────────────────────────────────
+// Whisperが確実に対応するMIMEタイプを優先順位で選ぶ
+function getBestMimeType() {
+  const candidates = [
+    'audio/mp4',           // Safari / iOS
+    'audio/webm;codecs=opus', // Chrome
+    'audio/webm',          // Chrome fallback
+    'audio/ogg;codecs=opus',  // Firefox
+    'audio/ogg',           // Firefox fallback
+  ];
+  for (const t of candidates) {
+    if (MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return '';
+}
+
+// MIMEタイプからWhisper用のファイル拡張子を決める
+function getExtForMime(mimeType) {
+  if (mimeType.includes('mp4'))  return 'mp4';
+  if (mimeType.includes('ogg'))  return 'ogg';
+  return 'webm';
+}
+
 async function startRecording() {
   if (isRecording) return;
   if (currentAudio && !currentAudio.paused) return; // wait for TTS
@@ -1011,8 +1033,11 @@ async function startRecording() {
   document.getElementById('recStatus').textContent = '';
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
-    mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+    const mimeType = getBestMimeType();
+    mediaRecorder = mimeType
+      ? new MediaRecorder(stream, { mimeType: mimeType })
+      : new MediaRecorder(stream);
+    console.log('[Rec] using mimeType:', mediaRecorder.mimeType);
     mediaRecorder.ondataavailable = function(e) { if (e.data.size > 0) recChunks.push(e.data); };
     mediaRecorder.start();
   } catch(e) {
@@ -1038,9 +1063,10 @@ async function stopRecording() {
     mediaRecorder.stop();
   });
 
-  const mimeType = recChunks.length > 0 ? mediaRecorder.mimeType : 'audio/webm';
+  const mimeType = (mediaRecorder && mediaRecorder.mimeType) ? mediaRecorder.mimeType : 'audio/webm';
   const audioBlob = new Blob(recChunks, { type: mimeType });
   recChunks = [];
+  console.log('[Rec] blob size:', audioBlob.size, 'mimeType:', mimeType);
 
   // Send to Whisper
   const word = await transcribeWithWhisper(audioBlob, mimeType);
@@ -1081,9 +1107,14 @@ async function stopRecording() {
 
 // Whisper transcription
 async function transcribeWithWhisper(blob, mimeType) {
-  const ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
+  const ext = getExtForMime(mimeType);
+  const filename = 'audio.' + ext;
+  console.log('[Whisper] sending file:', filename, 'size:', blob.size, 'type:', mimeType);
   const formData = new FormData();
-  formData.append('file', blob, 'audio.' + ext);
+  // Whisperにはbaseのmimeタイプでblobを再ラップして送る（codec情報を除去）
+  const cleanMime = mimeType.split(';')[0];
+  const cleanBlob = new Blob([blob], { type: cleanMime });
+  formData.append('file', cleanBlob, filename);
   formData.append('model', 'whisper-1');
   formData.append('language', 'ja');
   formData.append('prompt', 'これはOne Word Storyというゲームです。参加者が一語ずつ言っています。');
@@ -1430,10 +1461,9 @@ function saveGoogleKeyP() {
 
 // ── Participant Firebase listener ─────────────────────────────
 window._startParticipantListener = function() {
-  let _lastPhase = null;      // 前回処理したphase
-  let _lastPhaseIdx = -1;     // 前回処理したphaseIdx
-  let _lastScriptKey = null;  // 前回再生したscript（重複防止）
-  let _lastStoryLen = 0;      // 前回処理したstoryWords数
+  let _lastPhaseIdx = -1;    // 最後に処理したphaseIdx
+  let _lastStoryLen = 0;     // 最後に処理したstoryWords数
+  let _isSpeaking = false;   // TTS再生中フラグ（重複再生防止）
 
   fbListen('session', function(data) {
     if (!data) {
@@ -1464,12 +1494,11 @@ window._startParticipantListener = function() {
       return;
     }
 
-    // フェーズ進行 — phaseIdxが実際に変わった時だけ処理（重複発火防止）
+    // フェーズ進行 — phaseIdxが変わった時だけ処理
     const incomingPhaseIdx = typeof data.phaseIdx === 'number' ? data.phaseIdx : 0;
     if (phase && incomingPhaseIdx !== _lastPhaseIdx) {
       _lastPhaseIdx = incomingPhaseIdx;
-      _lastPhase = phase;
-      _lastScriptKey = null; // 新フェーズなのでscriptキーをリセット
+      _isSpeaking = false; // 新フェーズなのでフラグリセット
       // 前のフェーズのAI音声を即座に停止
       stopAudio();
       participants = data.participants || [];
@@ -1538,15 +1567,14 @@ window._startParticipantListener = function() {
         document.getElementById('scriptBox').innerHTML =
           '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
         const fbScript = data.script || '';
-        if (fbScript && fbScript !== _lastScriptKey) {
-          _lastScriptKey = fbScript; // 同じスクリプトを2度再生しない
+        if (fbScript && !_isSpeaking) {
+          _isSpeaking = true; // このフェーズでは一度だけ再生
           currentScript = fbScript;
           document.getElementById('scriptBox').className = 'script-box speaking';
           document.getElementById('scriptBox').textContent =
             fbScript.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
-          speak(fbScript);
+          speak(fbScript).then(function() { _isSpeaking = false; });
         } else if (!fbScript) {
-          // スクリプトがまだ届いていない場合はローディング表示のまま待つ
           document.getElementById('scriptBox').innerHTML =
             '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
         }
