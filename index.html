@@ -845,6 +845,7 @@ async function startSession() {
   currentPhaseIdx = 0;
   storyWords = [];
   storyAudioBlobs = [];
+  _lastKnownStoryLen = 0;
   currentTurnIdx = 0;
   roundCount = 0;
   currentScript = '';
@@ -1461,6 +1462,8 @@ window._startParticipantListener = function() {
 
     // フェーズ進行
     if (phase) {
+      // 次のフェーズに切り替わったら即座にAI音声を停止
+      stopAudio();
       participants = data.participants || [];
       currentPhaseIdx = data.phaseIdx || 0;
 
@@ -1547,37 +1550,48 @@ function endSessionWithFirebase() {
 }
 
 // ── Facilitator story listener ───────────────────────────────
-// Facilitatorはrunないが、参加者が録音したstoryWordsをリアルタイムで受信する
 let _facilStoryListenerStarted = false;
+let _lastKnownStoryLen = 0; // 自分が最後に知っていたstoryWords数
+
 function _startFacilitatorStoryListener() {
   if (_facilStoryListenerStarted) return;
   _facilStoryListenerStarted = true;
+
   fbListen('session/storyWords', function(remoteWords) {
     if (!remoteWords) return;
     const arr = Array.isArray(remoteWords) ? remoteWords : Object.values(remoteWords);
-    // 自分が既に持っているBlobを保持しつつ、新しい言葉をマージ
-    if (arr.length > storyWords.length) {
-      arr.forEach(function(w, i) {
-        if (!storyWords[i]) {
-          storyWords.push({ word: w.word, person: w.person, blob: null });
-        }
-      });
-      updateStoryDisplay();
-      console.log('[Facilitator] storyWords updated from Firebase:', arr.length, 'words');
-    }
-  });
-  fbListen('session/turnIdx', function(remoteTurnIdx) {
-    if (typeof remoteTurnIdx !== 'number') return;
     const phase = PHASES[currentPhaseIdx];
     if (phase !== 'impro_game') return;
-    // 自分の録音直後はstopRecordingがすでにannounceNextTurnを呼ぶので、
-    // Firebaseから受け取ったturnIdxが自分が書き込んだものと同じ場合はスキップ
-    if (remoteTurnIdx === currentTurnIdx) return;
-    // 他の参加者が録音してturnIdxが進んだ場合のみ更新・アナウンス
-    currentTurnIdx = remoteTurnIdx;
-    updateHighlight();
-    document.getElementById('storyAnnounce').textContent = participants[currentTurnIdx] + 'さん、どうぞ';
-    announceNextTurn();
+
+    // 自分が既に知っている数より増えていたら他の人が追加した
+    if (arr.length <= _lastKnownStoryLen) return;
+
+    // 新しい言葉をマージ（自分のBlobは保持）
+    arr.forEach(function(w, i) {
+      if (!storyWords[i]) {
+        storyWords.push({ word: w.word, person: w.person, blob: null });
+      }
+    });
+    _lastKnownStoryLen = arr.length;
+    updateStoryDisplay();
+    console.log('[Facilitator] remote word received, total:', arr.length);
+
+    // FirebaseのturnIdxを読み取ってアナウンス
+    if (window._fbDb) {
+      window._fbOnValue(window._fbRef(window._fbDb, 'session/turnIdx'), function(snap) {
+        const remoteTurnIdx = snap.val();
+        if (typeof remoteTurnIdx !== 'number') return;
+        // このonValueは一度だけ読みたいのでoff相当の処理（一回限り）
+        // currentTurnIdxと違う場合のみ更新
+        if (remoteTurnIdx !== currentTurnIdx) {
+          currentTurnIdx = remoteTurnIdx;
+          roundCount = Math.floor(arr.length / participants.length);
+          document.getElementById('roundInd').textContent = roundCount > 0 ? 'ラウンド ' + roundCount + ' 周目' : '';
+          updateHighlight();
+          announceNextTurn();
+        }
+      }, { onlyOnce: true });
+    }
   });
 }
 
