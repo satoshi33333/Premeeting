@@ -444,6 +444,25 @@
   .replay-story-label { font-size: 9px; letter-spacing: 0.18em; color: var(--apricot); font-weight: 400; align-self: flex-start; }
   .replay-story-words { font-family: 'Cormorant Garamond', serif; font-size: 19px; font-weight: 300; color: var(--text-mid); line-height: 1.9; align-self: flex-start; }
 
+  /* ── Record / Speech button ── */
+  .rec-btn {
+    width: 72px; height: 72px; border-radius: 50%;
+    border: 2px solid var(--apricot);
+    background: transparent;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .rec-btn:hover { border-color: var(--apricot-lt); }
+  .rec-btn.listening { border-color: var(--red); animation: recPulse 1.2s ease-in-out infinite; }
+  .rec-btn.listening .rec-dot { background: var(--red); }
+  .rec-dot {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--apricot); transition: all 0.15s;
+  }
+  @keyframes recPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(192,80,64,0.25); } 50% { box-shadow: 0 0 0 12px rgba(192,80,64,0); } }
+  .rec-label { font-size: 10px; color: var(--text-dim); letter-spacing: 0.1em; }
+
   /* ── Story image on end screen ── */
   #storyImageWrap { margin-top: 8px; }
   #storyImage { border-radius: 2px; box-shadow: 0 2px 16px rgba(0,0,0,0.08); }
@@ -574,6 +593,15 @@
 
     <!-- announce area -->
     <div id="storyAnnounce" style="min-height:36px; font-family:'Cormorant Garamond',serif; font-size:18px; font-weight:300; color:var(--apricot); text-align:center; letter-spacing:0.04em;"></div>
+
+    <!-- 音声認識ボタン -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:10px;">
+      <button type="button" class="rec-btn" id="recBtn" onclick="toggleSpeech()">
+        <div class="rec-dot" id="recDot"></div>
+      </button>
+      <div class="rec-label" id="recLabel">タップして話す</div>
+      <div id="recInterim" style="font-family:'Cormorant Garamond',serif; font-size:16px; color:var(--text-dim); min-height:24px; text-align:center; font-style:italic;"></div>
+    </div>
 
     <div>
       <div class="story-label">みんなで作っている物語</div>
@@ -852,6 +880,7 @@ async function runPhase(phase) {
     document.getElementById('mainControls').style.display = 'none';
     buildParticipantList();
     updateStoryDisplay();
+    document.getElementById('recBtn').disabled = true; // TTS終了後に有効化
     await announceNextTurn();
     return;
   }
@@ -952,15 +981,88 @@ function updateStoryDisplay() {
 async function announceNextTurn() {
   const name = participants[currentTurnIdx];
   document.getElementById('storyAnnounce').textContent = name + 'さん、どうぞ';
+  document.getElementById('recLabel').textContent = 'タップして話す';
+  document.getElementById('recInterim').textContent = '';
   updateHighlight();
   await speak(name + 'さん、どうぞ');
+  document.getElementById('recBtn').disabled = false;
 }
 
-// ── MediaRecorder recording ────────────────────────────────────
-// Whisperが確実に対応するMIMEタイプを選ぶ（Chrome優先）
+// ── Web Speech API 音声認識 ──────────────────────────────────
+let _speechRecognition = null;
+let _speechActive = false;
 
+function toggleSpeech() {
+  if (_speechActive) { stopSpeech(); } else { startSpeech(); }
+}
 
-// MIMEタイプからWhisper用のファイル拡張子を決める
+function startSpeech() {
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    alert('このブラウザは音声認識に対応していません。Chromeをお使いください。');
+    return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  _speechRecognition = new SR();
+  _speechRecognition.lang = 'ja-JP';
+  _speechRecognition.continuous = false;
+  _speechRecognition.interimResults = true;
+  _speechRecognition.maxAlternatives = 1;
+
+  _speechActive = true;
+  document.getElementById('recBtn').classList.add('listening');
+  document.getElementById('recLabel').textContent = '聞いています…';
+  document.getElementById('recInterim').textContent = '';
+
+  _speechRecognition.onresult = function(e) {
+    let interim = '', final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) final += e.results[i][0].transcript;
+      else interim += e.results[i][0].transcript;
+    }
+    document.getElementById('recInterim').textContent = interim || final;
+    if (final) {
+      const word = final.trim().split(/[\s　。、！？,.!?]+/)[0] || final.trim();
+      if (word) { stopSpeech(); submitWord(word); }
+    }
+  };
+  _speechRecognition.onerror = function(e) {
+    console.warn('Speech error:', e.error);
+    stopSpeech();
+    const lbl = document.getElementById('recLabel');
+    if (e.error === 'no-speech') lbl.textContent = '聞き取れませんでした。もう一度タップ';
+    else if (e.error === 'not-allowed') lbl.textContent = 'マイクを許可してください';
+    else lbl.textContent = 'タップして話す';
+  };
+  _speechRecognition.onend = function() { if (_speechActive) stopSpeech(); };
+  try { _speechRecognition.start(); } catch(e) { console.warn(e); stopSpeech(); }
+}
+
+function stopSpeech() {
+  _speechActive = false;
+  if (_speechRecognition) { try { _speechRecognition.stop(); } catch(e) {} _speechRecognition = null; }
+  const btn = document.getElementById('recBtn');
+  if (btn) btn.classList.remove('listening');
+  const lbl = document.getElementById('recLabel');
+  if (lbl) lbl.textContent = 'タップして話す';
+}
+
+async function submitWord(word) {
+  storyWords.push({ word: word, person: participants[currentTurnIdx] });
+  const pLen = participants.length || 1;
+  currentTurnIdx = storyWords.length % pLen;
+  roundCount = Math.floor(storyWords.length / pLen);
+  document.getElementById('roundInd').textContent = roundCount > 0 ? 'ラウンド ' + roundCount + ' 周目' : '';
+  fbWrite('session/storyWords', storyWords.map(function(w) { return { word: w.word, person: w.person }; }));
+  updateStoryDisplay();
+  if (IS_FACILITATOR()) {
+    await announceNextTurn();
+  } else {
+    updateHighlight();
+    document.getElementById('storyAnnounce').textContent = (participants[currentTurnIdx] || '次の方') + 'さん、どうぞ';
+    document.getElementById('recInterim').textContent = '';
+    document.getElementById('recBtn').disabled = false;
+  }
+}
 
 
 
@@ -971,6 +1073,7 @@ async function announceNextTurn() {
 
 // End story phase → move to outro
 async function endStoryPhase() {
+  stopSpeech();
   currentPhaseIdx = PHASES.indexOf('outro');
   document.getElementById('storyControls').style.display = 'none';
   document.getElementById('storyCard').style.display = 'none';
