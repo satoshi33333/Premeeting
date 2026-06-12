@@ -760,6 +760,10 @@ async function runPhase(phase) {
     '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
   document.getElementById('replayBtn').disabled = true;
   document.getElementById('nextBtn').disabled = true;
+  // Hide controls entirely during outro — end screen appears automatically
+  if (phase === 'outro') {
+    document.getElementById('mainControls').style.display = 'none';
+  }
 
   const script = await generateScript(phase);
   currentScript = script;
@@ -769,15 +773,20 @@ async function runPhase(phase) {
   document.getElementById('nextBtn').disabled = false;
   await speak(script);
 
-  // outro → automatically move to end screen after TTS finishes
+  // outro → move to end screen regardless of whether TTS was stopped or completed
   if (phase === 'outro') {
-    await endSession();
+    endSession();
   }
 }
 
 // ── Navigation ────────────────────────────────────────────────
 async function nextPhase() {
   stopAudio();
+  // If we are currently on outro, skip to endSession immediately
+  if (PHASES[currentPhaseIdx] === 'outro') {
+    endSession();
+    return;
+  }
   currentPhaseIdx++;
   if (currentPhaseIdx >= PHASES.length) {
     endSession();
@@ -1147,28 +1156,39 @@ function stopAudio() {
 
 // ── End session ───────────────────────────────────────────────
 function endSession() {
-  stopAudio();
+  // Do NOT call stopAudio() here — outro TTS already finished naturally
+  _stopRequested = false;
   document.getElementById('screenFacilitator').classList.remove('active');
   document.getElementById('screenEnd').classList.add('active');
 
-  // endMessage: set from currentScript (outro already played in runPhase)
-  if (currentScript) {
-    document.getElementById('endMessage').textContent = currentScript.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
-  } else {
-    document.getElementById('endMessage').textContent = 'お疲れ様でした。';
-  }
+  // endMessage: outro script already played; show text
+  const msgEl = document.getElementById('endMessage');
+  msgEl.textContent = currentScript
+    ? currentScript.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim()
+    : 'お疲れ様でした。';
 
-  // Show story words + replay button + image
+  // Always show story area (even if empty, show placeholder)
+  const area = document.getElementById('replayStoryArea');
+  area.style.display = 'flex';
+
   if (storyWords.length > 0) {
     const storyText = storyWords.map(function(w) { return w.word; }).join(' ');
-    document.getElementById('replayStoryArea').style.display = 'flex';
     document.getElementById('replayStoryWords').textContent = storyText;
-    if (storyAudioBlobs.length === 0) {
+
+    if (storyAudioBlobs.length > 0) {
+      document.getElementById('replayAllBtn').style.display = 'inline-block';
+    } else {
       document.getElementById('replayAllBtn').style.display = 'none';
     }
-    // Generate image asynchronously
+
+    // Generate image
     document.getElementById('storyImageWrap').style.display = 'flex';
     generateStoryImage(storyText);
+  } else {
+    // No words recorded yet — hide replay/image, show placeholder text
+    document.getElementById('replayStoryWords').textContent = '（ストーリーはまだありません）';
+    document.getElementById('replayAllBtn').style.display = 'none';
+    document.getElementById('storyImageWrap').style.display = 'none';
   }
 }
 
@@ -1193,26 +1213,34 @@ async function generateStoryImage(storyText) {
         'Authorization': 'Bearer ' + openaiKey,
       },
       body: JSON.stringify({
-        model: 'gpt-image-1',
+        model: 'gpt-image-2',
         prompt: prompt,
         n: 1,
         size: '1024x1024',
         quality: 'standard',
       }),
     });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error('HTTP ' + resp.status + ': ' + errText);
+    }
     const data = await resp.json();
     if (data.error) throw new Error(data.error.message);
 
-    // gpt-image-1 returns base64
+    // gpt-image-2 returns base64
     const b64 = data.data[0].b64_json;
+    if (!b64) throw new Error('b64_json missing in response');
     img.src = 'data:image/png;base64,' + b64;
     img.onload = function() {
       loading.style.display = 'none';
       img.style.display = 'block';
     };
+    img.onerror = function() {
+      loading.innerHTML = '（画像の表示に失敗しました）';
+    };
   } catch(e) {
-    console.warn('Image generation error:', e);
-    loading.innerHTML = '（絵の生成に失敗しました）';
+    console.error('Image generation error:', e);
+    loading.textContent = '（絵の生成に失敗しました: ' + e.message + '）';
   }
 }
 
