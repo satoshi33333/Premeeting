@@ -741,6 +741,11 @@ let currentTurnIdx = 0;
 let roundCount = 0;
 let currentScript = '';
 
+// Participant Firebase listener state (global so _participantPlayScript can access)
+let _lastPhaseIdx = -1;
+let _lastStoryLen = 0;
+let _isSpeaking = false;
+
 const PHASES = ['intro', 'bodyscan', 'impro_intro', 'impro_game', 'outro'];
 const PHASE_TAGS = {
   intro:       '— Intro —',
@@ -1383,10 +1388,6 @@ function saveGoogleKeyP() {
 
 // ── Participant Firebase listener ─────────────────────────────
 window._startParticipantListener = function() {
-  let _lastPhaseIdx = -1;    // 最後に処理したphaseIdx
-  let _lastStoryLen = 0;     // 最後に処理したstoryWords数
-  let _isSpeaking = false;   // TTS再生中フラグ（重複再生防止）
-
   fbListen('session', function(data) {
     if (!data) {
       document.getElementById('waitingStatus').textContent = 'セッション開始を待っています…';
