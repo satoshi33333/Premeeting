@@ -857,9 +857,13 @@ async function startSession() {
     phaseIdx: 0,
     participants: participants,
     storyWords: [],
+    turnIdx: 0,
+    roundCount: 0,
     status: 'running',
     startedAt: Date.now(),
   });
+  // Facilitatorも他参加者の録音をリッスンしてstoryWordsを更新
+  _startFacilitatorStoryListener();
   await runPhase(PHASES[0]);
 }
 
@@ -903,6 +907,7 @@ async function runPhase(phase) {
     document.getElementById('scriptBox').style.display = 'none';
     const script = await generateScript(phase);
     currentScript = script;
+    if (IS_FACILITATOR()) { fbWrite('session/script', script); }
     await speak(script);
     endSession();
     return;
@@ -910,6 +915,10 @@ async function runPhase(phase) {
 
   const script = await generateScript(phase);
   currentScript = script;
+  // Firebase: スクリプトを全参加者に配信（参加者はこれを受け取って表示・再生）
+  if (IS_FACILITATOR()) {
+    fbWrite('session/script', script);
+  }
   document.getElementById('scriptBox').className = 'script-box speaking';
   document.getElementById('scriptBox').textContent = script.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
   document.getElementById('replayBtn').disabled = false;
@@ -1535,17 +1544,23 @@ window._startParticipantListener = function() {
         }
 
       } else {
-        // intro / bodyscan / impro_intro: スクリプトを生成してテキスト表示＋TTS再生
+        // intro / bodyscan / impro_intro:
+        // FirebaseのスクリプトをそのままTTS再生（CORSエラー回避のためClaudeを呼ばない）
         stopAudio();
         document.getElementById('scriptBox').innerHTML =
           '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
-        generateScript(phase).then(function(script) {
-          currentScript = script;
+        const fbScript = data.script || '';
+        if (fbScript) {
+          currentScript = fbScript;
           document.getElementById('scriptBox').className = 'script-box speaking';
           document.getElementById('scriptBox').textContent =
-            script.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
-          speak(script);
-        });
+            fbScript.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
+          speak(fbScript);
+        } else {
+          // スクリプトがまだ届いていない場合はローディング表示のまま待つ
+          document.getElementById('scriptBox').innerHTML =
+            '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
+        }
       }
     }
   });
@@ -1556,6 +1571,42 @@ const _origEndSession = typeof endSession === 'function' ? endSession : null;
 function endSessionWithFirebase() {
   fbWrite('session/status', 'ended');
   endSession();
+}
+
+// ── Facilitator story listener ───────────────────────────────
+// Facilitatorはrunないが、参加者が録音したstoryWordsをリアルタイムで受信する
+let _facilStoryListenerStarted = false;
+function _startFacilitatorStoryListener() {
+  if (_facilStoryListenerStarted) return;
+  _facilStoryListenerStarted = true;
+  fbListen('session/storyWords', function(remoteWords) {
+    if (!remoteWords) return;
+    const arr = Array.isArray(remoteWords) ? remoteWords : Object.values(remoteWords);
+    // 自分が既に持っているBlobを保持しつつ、新しい言葉をマージ
+    if (arr.length > storyWords.length) {
+      arr.forEach(function(w, i) {
+        if (!storyWords[i]) {
+          storyWords.push({ word: w.word, person: w.person, blob: null });
+        }
+      });
+      updateStoryDisplay();
+      console.log('[Facilitator] storyWords updated from Firebase:', arr.length, 'words');
+    }
+  });
+  fbListen('session/turnIdx', function(remoteTurnIdx) {
+    if (typeof remoteTurnIdx !== 'number') return;
+    if (remoteTurnIdx !== currentTurnIdx) {
+      currentTurnIdx = remoteTurnIdx;
+      updateHighlight();
+      // 自分のTTSアナウンスが終わっていなければスキップ
+      const phase = PHASES[currentPhaseIdx];
+      if (phase === 'impro_game') {
+        document.getElementById('storyAnnounce').textContent = participants[currentTurnIdx] + 'さん、どうぞ';
+        stopAudio();
+        announceNextTurn();
+      }
+    }
+  });
 }
 
 // ── Utils ─────────────────────────────────────────────────────
