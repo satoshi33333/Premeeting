@@ -604,7 +604,7 @@
     <div id="storyAnnounce" style="min-height:36px; font-family:'Cormorant Garamond',serif; font-size:18px; font-weight:300; color:var(--apricot); text-align:center; letter-spacing:0.04em;"></div>
 
     <div style="display:flex; flex-direction:column; align-items:center; gap:12px;">
-      <button class="rec-btn" id="recBtn" onmousedown="startRecording()" onmouseup="stopRecording()" ontouchstart="startRecording()" ontouchend="stopRecording()">
+      <button type="button" class="rec-btn" id="recBtn" onmousedown="startRecording()" onmouseup="stopRecording()" ontouchstart="startRecording(event)" ontouchend="stopRecording(event)">
         <div class="rec-dot" id="recDot"></div>
       </button>
       <div class="rec-label" id="recLabel">押している間、録音</div>
@@ -1028,7 +1028,8 @@ function getExtForMime(mimeType) {
   return 'webm';
 }
 
-async function startRecording() {
+async function startRecording(e) {
+  if (e) { e.preventDefault(); e.stopPropagation(); }
   if (isRecording) return;
   if (currentAudio && !currentAudio.paused) return; // wait for TTS
   isRecording = true;
@@ -1053,7 +1054,8 @@ async function startRecording() {
   }
 }
 
-async function stopRecording() {
+async function stopRecording(e) {
+  if (e) { e.preventDefault(); e.stopPropagation(); }
   if (!isRecording || !mediaRecorder) return;
   isRecording = false;
   document.getElementById('recBtn').classList.remove('recording');
