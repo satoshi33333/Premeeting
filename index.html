@@ -1343,6 +1343,13 @@ async function generateStoryImage(storyText) {
 
 function resetSession() {
   stopAudio();
+  // Firebase: waitingステータスにリセット
+  if (IS_FACILITATOR()) {
+    fbWrite('session/status', 'waiting');
+    fbWrite('session/phase', '');
+    fbWrite('session/script', '');
+    fbWrite('session/storyWords', []);
+  }
   storyWords = [];
   currentPhaseIdx = 0;
   currentTurnIdx = 0;
