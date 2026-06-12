@@ -1016,19 +1016,30 @@ async function stopRecording() {
   // Save word + blob
   storyWords.push({ word: word, person: participants[currentTurnIdx], blob: audioBlob });
   storyAudioBlobs.push(audioBlob);
-  // Firebase: 物語の単語を全参加者に同期
-  fbWrite('session/storyWords', storyWords.map(function(w) { return { word: w.word, person: w.person }; }));
-  fbWrite('session/turnIdx', (currentTurnIdx + 1) % participants.length);
 
-  // Advance turn
+  // Advance turn FIRST, then sync to Firebase with correct next turnIdx
   currentTurnIdx = (currentTurnIdx + 1) % participants.length;
   if (currentTurnIdx === 0) roundCount++;
   document.getElementById('roundInd').textContent = roundCount > 0 ? 'ラウンド ' + roundCount + ' 周目' : '';
 
+  // Firebase: 正しいturnIdx（更新後）で全員に同期
+  fbWrite('session/storyWords', storyWords.map(function(w) { return { word: w.word, person: w.person }; }));
+  fbWrite('session/turnIdx', currentTurnIdx);
+  fbWrite('session/roundCount', roundCount);
+
   updateStoryDisplay();
 
-  // Announce next
-  await announceNextTurn();
+  // Announce next (only facilitator announces via TTS)
+  if (IS_FACILITATOR()) {
+    await announceNextTurn();
+  } else {
+    // 参加者側: ハイライトだけ更新、TTS不要（ファシリテーターの画面共有で聞こえる）
+    updateHighlight();
+    document.getElementById('storyAnnounce').textContent = participants[currentTurnIdx] + 'さん、どうぞ';
+    document.getElementById('recBtn').disabled = false;
+    document.getElementById('recLabel').textContent = '押している間、録音';
+    document.getElementById('recStatus').textContent = '';
+  }
 }
 
 // Whisper transcription
@@ -1455,15 +1466,34 @@ window._startParticipantListener = function() {
       document.getElementById('phaseTag').textContent = PHASE_TAGS[phase] || '';
       document.getElementById('progressFill').style.width = (PROGRESS_MAP[phase] || 0) + '%';
 
-      // One Word Story の進捗を同期
-      if (phase === 'impro_game' && data.storyWords) {
-        storyWords = data.storyWords.map(function(w) { return { word: w.word, person: w.person }; });
-        updateStoryDisplay();
-        if (data.participants) {
-          currentTurnIdx = data.turnIdx || 0;
-          buildParticipantList();
-          updateHighlight();
+      // One Word Story の進捗を同期（常に最新状態に保つ）
+      if (phase === 'impro_game') {
+        // 参加者リストを常に同期
+        if (data.participants && data.participants.length > 0) {
+          participants = data.participants;
         }
+        // storyWordsを同期
+        const remoteWords = data.storyWords || [];
+        // 自分が録音したBlobは保持しつつ、テキストは常にFirebaseを正とする
+        if (remoteWords.length > storyWords.length) {
+          // 他の人が追加した言葉を反映
+          storyWords = remoteWords.map(function(w) {
+            return { word: w.word, person: w.person, blob: null };
+          });
+          updateStoryDisplay();
+        }
+        // turnIdxを同期（自分の番かどうか判定）
+        const remoteTurnIdx = typeof data.turnIdx === 'number' ? data.turnIdx : 0;
+        currentTurnIdx = remoteTurnIdx;
+        roundCount = data.roundCount || 0;
+        document.getElementById('roundInd').textContent = roundCount > 0 ? 'ラウンド ' + roundCount + ' 周目' : '';
+        buildParticipantList();
+        updateHighlight();
+        // 自分の番なら録音ボタンを有効に
+        const myName = ''; // 参加者は自分の名前を特定できないため全員録音可能
+        document.getElementById('storyAnnounce').textContent = participants[currentTurnIdx] + 'さん、どうぞ';
+        document.getElementById('recBtn').disabled = false;
+        document.getElementById('recLabel').textContent = '押している間、録音';
       }
     }
   });
