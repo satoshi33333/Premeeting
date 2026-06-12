@@ -1456,44 +1456,68 @@ window._startParticipantListener = function() {
 
       // 待機→ファシリテーター画面へ切り替え
       document.getElementById('screenWaiting').classList.remove('active');
+      document.getElementById('screenEnd').classList.remove('active');
       const facEl = document.getElementById('screenFacilitator');
-      if (!facEl.classList.contains('active')) {
-        facEl.classList.add('active');
-        document.getElementById('waitingStatus').textContent = '';
-      }
+      facEl.classList.add('active');
 
-      // UIだけ更新（音声はファシリテーターの画面共有から流れる）
+      // フェーズUIを更新（ファシリテーターのrunPhaseと同じ処理）
       document.getElementById('phaseTag').textContent = PHASE_TAGS[phase] || '';
       document.getElementById('progressFill').style.width = (PROGRESS_MAP[phase] || 0) + '%';
+      document.getElementById('storyCard').style.display = 'none';
+      document.getElementById('storyControls').style.display = 'none';
+      document.getElementById('mainControls').style.display = 'none';
+      document.getElementById('scriptBox').style.display = 'block';
+      document.getElementById('scriptBox').className = 'script-box';
 
-      // One Word Story の進捗を同期（常に最新状態に保つ）
       if (phase === 'impro_game') {
-        // 参加者リストを常に同期
+        // One Word Story フェーズ
+        document.getElementById('scriptBox').style.display = 'none';
+        document.getElementById('storyCard').style.display = 'flex';
+        document.getElementById('storyControls').style.display = 'none'; // 参加者はストーリー終了ボタン不要
+
+        // 参加者リストを同期
         if (data.participants && data.participants.length > 0) {
           participants = data.participants;
         }
         // storyWordsを同期
         const remoteWords = data.storyWords || [];
-        // 自分が録音したBlobは保持しつつ、テキストは常にFirebaseを正とする
         if (remoteWords.length > storyWords.length) {
-          // 他の人が追加した言葉を反映
           storyWords = remoteWords.map(function(w) {
             return { word: w.word, person: w.person, blob: null };
           });
           updateStoryDisplay();
         }
-        // turnIdxを同期（自分の番かどうか判定）
-        const remoteTurnIdx = typeof data.turnIdx === 'number' ? data.turnIdx : 0;
-        currentTurnIdx = remoteTurnIdx;
+        // turnIdxを同期
+        currentTurnIdx = typeof data.turnIdx === 'number' ? data.turnIdx : 0;
         roundCount = data.roundCount || 0;
         document.getElementById('roundInd').textContent = roundCount > 0 ? 'ラウンド ' + roundCount + ' 周目' : '';
         buildParticipantList();
         updateHighlight();
-        // 自分の番なら録音ボタンを有効に
-        const myName = ''; // 参加者は自分の名前を特定できないため全員録音可能
         document.getElementById('storyAnnounce').textContent = participants[currentTurnIdx] + 'さん、どうぞ';
         document.getElementById('recBtn').disabled = false;
         document.getElementById('recLabel').textContent = '押している間、録音';
+
+      } else if (phase === 'outro') {
+        // outro: 参加者側は音声のみ再生してエンドスクリーンへ
+        document.getElementById('scriptBox').style.display = 'none';
+        if (data.script) {
+          speak(data.script).then(function() { endSession(); });
+        } else {
+          endSession();
+        }
+
+      } else {
+        // intro / bodyscan / impro_intro: スクリプトを生成してテキスト表示＋TTS再生
+        stopAudio();
+        document.getElementById('scriptBox').innerHTML =
+          '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
+        generateScript(phase).then(function(script) {
+          currentScript = script;
+          document.getElementById('scriptBox').className = 'script-box speaking';
+          document.getElementById('scriptBox').textContent =
+            script.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
+          speak(script);
+        });
       }
     }
   });
