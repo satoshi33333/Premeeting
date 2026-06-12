@@ -1192,7 +1192,6 @@ function speakSegment(text) {
     })
     .then(function(data) {
       if (!data.audioContent) throw new Error('No audioContent');
-      // Use data URL directly — avoids BlobURL lifecycle issues that cause page reloads
       if (_stopRequested) { resolve(); return; }
       const dataUrl = 'data:audio/mpeg;base64,' + data.audioContent;
       const audio = new Audio(dataUrl);
@@ -1423,8 +1422,9 @@ window._startParticipantListener = function() {
       return; // storyWords更新のみ、以降のフェーズ処理はスキップ
     }
 
-    // phaseIdxが変わった時だけフェーズ処理
-    if (phase && phaseChanged) {
+    // phaseIdxが変わった時、または初回接続時にフェーズ処理
+    const isFirstConnect = (_lastPhaseIdx === -1);
+    if (phase && (phaseChanged || isFirstConnect)) {
       _lastPhaseIdx = incomingPhaseIdx;
       _isSpeaking = false;
       stopAudio();
@@ -1487,23 +1487,29 @@ window._startParticipantListener = function() {
 
       } else {
         // intro / bodyscan / impro_intro:
-        // script が届くまでローディング表示で待つ（古いscriptは使わない）
         stopAudio();
         const fbScript = data.script || '';
         if (fbScript && !_isSpeaking) {
-          // scriptが届いていてまだ再生していない場合のみ再生
           _isSpeaking = true;
           currentScript = fbScript;
+          // テキストを先に表示（TTS失敗でも読めるように）
+          const displayText = fbScript.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
           document.getElementById('scriptBox').className = 'script-box speaking';
-          document.getElementById('scriptBox').textContent =
-            fbScript.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
-          speak(fbScript).then(function() { _isSpeaking = false; });
-        } else {
-          // scriptがまだ届いていない（空）→ ローディング表示で待つ
+          document.getElementById('scriptBox').textContent = displayText;
+          // TTS再生（失敗しても_isSpeakingをfalseに戻す）
+          speak(fbScript).then(function() {
+            _isSpeaking = false;
+          }).catch(function(e) {
+            console.warn('TTS failed, text already shown:', e);
+            _isSpeaking = false;
+          });
+        } else if (!fbScript) {
+          // scriptがまだ届いていない → ローディング表示で待つ
           document.getElementById('scriptBox').className = 'script-box';
           document.getElementById('scriptBox').innerHTML =
             '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
         }
+        // fbScript があって _isSpeaking が true の場合はすでに表示・再生中なので何もしない
       }
     }
   });
