@@ -1055,15 +1055,14 @@ async function stopRecording() {
   storyWords.push({ word: word, person: participants[currentTurnIdx], blob: audioBlob });
   storyAudioBlobs.push(audioBlob);
 
-  // Advance turn FIRST, then sync to Firebase with correct next turnIdx
-  currentTurnIdx = (currentTurnIdx + 1) % participants.length;
-  if (currentTurnIdx === 0) roundCount++;
+  // turnIdxとroundCountをstoryWords.lengthから計算（全員で一貫した計算）
+  const pLen = participants.length || 1;
+  currentTurnIdx = storyWords.length % pLen;
+  roundCount = Math.floor(storyWords.length / pLen);
   document.getElementById('roundInd').textContent = roundCount > 0 ? 'ラウンド ' + roundCount + ' 周目' : '';
 
-  // Firebase: 正しいturnIdx（更新後）で全員に同期
+  // Firebase: storyWordsだけ書き込む（turnIdxとroundCountは各自が計算）
   fbWrite('session/storyWords', storyWords.map(function(w) { return { word: w.word, person: w.person }; }));
-  fbWrite('session/turnIdx', currentTurnIdx);
-  fbWrite('session/roundCount', roundCount);
 
   updateStoryDisplay();
 
@@ -1431,6 +1430,11 @@ function saveGoogleKeyP() {
 
 // ── Participant Firebase listener ─────────────────────────────
 window._startParticipantListener = function() {
+  let _lastPhase = null;      // 前回処理したphase
+  let _lastPhaseIdx = -1;     // 前回処理したphaseIdx
+  let _lastScriptKey = null;  // 前回再生したscript（重複防止）
+  let _lastStoryLen = 0;      // 前回処理したstoryWords数
+
   fbListen('session', function(data) {
     if (!data) {
       document.getElementById('waitingStatus').textContent = 'セッション開始を待っています…';
@@ -1460,12 +1464,16 @@ window._startParticipantListener = function() {
       return;
     }
 
-    // フェーズ進行
-    if (phase) {
-      // 次のフェーズに切り替わったら即座にAI音声を停止
+    // フェーズ進行 — phaseIdxが実際に変わった時だけ処理（重複発火防止）
+    const incomingPhaseIdx = typeof data.phaseIdx === 'number' ? data.phaseIdx : 0;
+    if (phase && incomingPhaseIdx !== _lastPhaseIdx) {
+      _lastPhaseIdx = incomingPhaseIdx;
+      _lastPhase = phase;
+      _lastScriptKey = null; // 新フェーズなのでscriptキーをリセット
+      // 前のフェーズのAI音声を即座に停止
       stopAudio();
       participants = data.participants || [];
-      currentPhaseIdx = data.phaseIdx || 0;
+      currentPhaseIdx = incomingPhaseIdx;
 
       // 待機→ファシリテーター画面へ切り替え
       document.getElementById('screenWaiting').classList.remove('active');
@@ -1492,17 +1500,21 @@ window._startParticipantListener = function() {
         if (data.participants && data.participants.length > 0) {
           participants = data.participants;
         }
-        // storyWordsを同期
+        // storyWordsを同期（増えた時だけ）
         const remoteWords = data.storyWords || [];
-        if (remoteWords.length > storyWords.length) {
-          storyWords = remoteWords.map(function(w) {
+        const remoteLen = Array.isArray(remoteWords) ? remoteWords.length : Object.keys(remoteWords).length;
+        if (remoteLen > _lastStoryLen) {
+          _lastStoryLen = remoteLen;
+          const arr = Array.isArray(remoteWords) ? remoteWords : Object.values(remoteWords);
+          storyWords = arr.map(function(w) {
             return { word: w.word, person: w.person, blob: null };
           });
           updateStoryDisplay();
         }
-        // turnIdxを同期
-        currentTurnIdx = typeof data.turnIdx === 'number' ? data.turnIdx : 0;
-        roundCount = data.roundCount || 0;
+        // turnIdxとroundCountをstoryWords.lengthから直接計算
+        const pCount = participants.length || 1;
+        currentTurnIdx = storyWords.length % pCount;
+        roundCount = Math.floor(storyWords.length / pCount);
         document.getElementById('roundInd').textContent = roundCount > 0 ? 'ラウンド ' + roundCount + ' 周目' : '';
         buildParticipantList();
         updateHighlight();
@@ -1526,13 +1538,14 @@ window._startParticipantListener = function() {
         document.getElementById('scriptBox').innerHTML =
           '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
         const fbScript = data.script || '';
-        if (fbScript) {
+        if (fbScript && fbScript !== _lastScriptKey) {
+          _lastScriptKey = fbScript; // 同じスクリプトを2度再生しない
           currentScript = fbScript;
           document.getElementById('scriptBox').className = 'script-box speaking';
           document.getElementById('scriptBox').textContent =
             fbScript.replace(/\[間\s*[\d.]+[秒s]?\]/g, '').replace(/\s{2,}/g, ' ').trim();
           speak(fbScript);
-        } else {
+        } else if (!fbScript) {
           // スクリプトがまだ届いていない場合はローディング表示のまま待つ
           document.getElementById('scriptBox').innerHTML =
             '<div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
@@ -1551,7 +1564,7 @@ function endSessionWithFirebase() {
 
 // ── Facilitator story listener ───────────────────────────────
 let _facilStoryListenerStarted = false;
-let _lastKnownStoryLen = 0; // 自分が最後に知っていたstoryWords数
+let _lastKnownStoryLen = 0;
 
 function _startFacilitatorStoryListener() {
   if (_facilStoryListenerStarted) return;
@@ -1563,8 +1576,9 @@ function _startFacilitatorStoryListener() {
     const phase = PHASES[currentPhaseIdx];
     if (phase !== 'impro_game') return;
 
-    // 自分が既に知っている数より増えていたら他の人が追加した
+    // storyWordsが増えた時だけ処理
     if (arr.length <= _lastKnownStoryLen) return;
+    _lastKnownStoryLen = arr.length;
 
     // 新しい言葉をマージ（自分のBlobは保持）
     arr.forEach(function(w, i) {
@@ -1572,25 +1586,20 @@ function _startFacilitatorStoryListener() {
         storyWords.push({ word: w.word, person: w.person, blob: null });
       }
     });
-    _lastKnownStoryLen = arr.length;
     updateStoryDisplay();
     console.log('[Facilitator] remote word received, total:', arr.length);
 
-    // FirebaseのturnIdxを読み取ってアナウンス
-    if (window._fbDb) {
-      window._fbOnValue(window._fbRef(window._fbDb, 'session/turnIdx'), function(snap) {
-        const remoteTurnIdx = snap.val();
-        if (typeof remoteTurnIdx !== 'number') return;
-        // このonValueは一度だけ読みたいのでoff相当の処理（一回限り）
-        // currentTurnIdxと違う場合のみ更新
-        if (remoteTurnIdx !== currentTurnIdx) {
-          currentTurnIdx = remoteTurnIdx;
-          roundCount = Math.floor(arr.length / participants.length);
-          document.getElementById('roundInd').textContent = roundCount > 0 ? 'ラウンド ' + roundCount + ' 周目' : '';
-          updateHighlight();
-          announceNextTurn();
-        }
-      }, { onlyOnce: true });
+    // storyWords.lengthから直接turnIdxとroundCountを計算（Firebase書き込みタイミング依存を排除）
+    const newTurnIdx = arr.length % participants.length;
+    const newRoundCount = Math.floor(arr.length / participants.length);
+
+    if (newTurnIdx !== currentTurnIdx || newRoundCount !== roundCount) {
+      currentTurnIdx = newTurnIdx;
+      roundCount = newRoundCount;
+      document.getElementById('roundInd').textContent = roundCount > 0 ? 'ラウンド ' + roundCount + ' 周目' : '';
+      updateHighlight();
+      announceNextTurn();
+      console.log('[Facilitator] turn advanced to', currentTurnIdx, 'round', roundCount);
     }
   });
 }
