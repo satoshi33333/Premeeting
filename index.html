@@ -761,8 +761,15 @@ async function runPhase(phase) {
   document.getElementById('replayBtn').disabled = true;
   document.getElementById('nextBtn').disabled = true;
   // Hide controls entirely during outro — end screen appears automatically
+  // outro: generate + speak silently, then go straight to end screen (no scriptBox shown)
   if (phase === 'outro') {
     document.getElementById('mainControls').style.display = 'none';
+    document.getElementById('scriptBox').style.display = 'none';
+    const script = await generateScript(phase);
+    currentScript = script;
+    await speak(script);
+    endSession();
+    return;
   }
 
   const script = await generateScript(phase);
@@ -772,11 +779,6 @@ async function runPhase(phase) {
   document.getElementById('replayBtn').disabled = false;
   document.getElementById('nextBtn').disabled = false;
   await speak(script);
-
-  // outro → move to end screen regardless of whether TTS was stopped or completed
-  if (phase === 'outro') {
-    endSession();
-  }
 }
 
 // ── Navigation ────────────────────────────────────────────────
