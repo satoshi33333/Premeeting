@@ -838,12 +838,26 @@ async function startSession() {
   document.getElementById('screenSetup').classList.remove('active');
   document.getElementById('screenFacilitator').classList.add('active');
   document.getElementById('nextBtn').textContent = '次へ ›';
-  // Firebase: セッション開始を全参加者に通知
+  // Firebase: まず全データをリセット、その後セッション開始を通知
+  fbWrite('session', {
+    phase: '',
+    phaseIdx: -1,
+    participants: [],
+    storyWords: [],
+    script: '',
+    turnIdx: 0,
+    roundCount: 0,
+    status: 'waiting',
+    startedAt: 0,
+  });
+  // 少し待ってからセッション開始（Participantが古いデータを処理しないよう）
+  await new Promise(function(r) { setTimeout(r, 500); });
   fbWrite('session', {
     phase: PHASES[0],
     phaseIdx: 0,
     participants: participants,
     storyWords: [],
+    script: '',
     turnIdx: 0,
     roundCount: 0,
     status: 'running',
@@ -1374,6 +1388,19 @@ window._startParticipantListener = function() {
 
     const status = data.status;
     const phase  = data.phase;
+
+    // waiting状態（セッション未開始）は待機画面のまま
+    if (status === 'waiting' || !status) {
+      document.getElementById('waitingStatus').textContent = 'セッション開始を待っています…';
+      // 万が一ファシリテーター画面が開いていたら待機画面に戻す
+      document.getElementById('screenFacilitator').classList.remove('active');
+      document.getElementById('screenEnd').classList.remove('active');
+      document.getElementById('screenWaiting').classList.add('active');
+      _lastPhaseIdx = -1; // リセット
+      _isSpeaking = false;
+      stopAudio();
+      return;
+    }
 
     // セッション終了
     if (status === 'ended') {
