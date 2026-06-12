@@ -1292,24 +1292,27 @@ function speakSegment(text) {
     })
     .then(function(data) {
       if (!data.audioContent) throw new Error('No audioContent');
-      // Decode base64 MP3
-      const binary = atob(data.audioContent);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      const blob = new Blob([bytes], { type: 'audio/mpeg' });
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
+      // Use data URL directly — avoids BlobURL lifecycle issues that cause page reloads
+      if (_stopRequested) { resolve(); return; }
+      const dataUrl = 'data:audio/mpeg;base64,' + data.audioContent;
+      const audio = new Audio(dataUrl);
       currentAudio = audio;
-      // Check again after fetch — user may have pressed next during API call
-      if (_stopRequested) { URL.revokeObjectURL(url); resolve(); return; }
       function cleanup() {
-        URL.revokeObjectURL(url);
         currentAudio = null;
         resolve();
       }
       audio.onended = cleanup;
-      audio.onerror = cleanup;
-      audio.play().catch(cleanup);
+      audio.onerror = function(e) {
+        console.warn('Audio playback error:', e);
+        cleanup();
+      };
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(function(e) {
+          console.warn('Audio play() rejected:', e);
+          cleanup();
+        });
+      }
     })
     .catch(function(e) {
       console.warn('Google TTS error:', e);
@@ -1511,6 +1514,29 @@ window._startParticipantListener = function() {
       }
       document.getElementById('endMessage').textContent = 'セッションが終了しました。お疲れ様でした！';
       return;
+    }
+
+    // impro_game中のstoryWords更新は常に処理（phaseIdxが変わらなくても）
+    if (phase === 'impro_game' && _lastPhaseIdx === 3) {
+      const remoteWords2 = data.storyWords || [];
+      const remoteLen2 = Array.isArray(remoteWords2) ? remoteWords2.length
+        : Object.keys(remoteWords2).length;
+      if (remoteLen2 > _lastStoryLen) {
+        _lastStoryLen = remoteLen2;
+        const arr2 = Array.isArray(remoteWords2) ? remoteWords2 : Object.values(remoteWords2);
+        storyWords = arr2.map(function(w) { return { word: w.word, person: w.person, blob: null }; });
+        updateStoryDisplay();
+        const pCount2 = (participants.length || 1);
+        currentTurnIdx = storyWords.length % pCount2;
+        roundCount = Math.floor(storyWords.length / pCount2);
+        document.getElementById('roundInd').textContent = roundCount > 0 ? 'ラウンド ' + roundCount + ' 周目' : '';
+        updateHighlight();
+        document.getElementById('storyAnnounce').textContent = (participants[currentTurnIdx] || '次の方') + 'さん、どうぞ';
+        document.getElementById('recBtn').disabled = false;
+        document.getElementById('recLabel').textContent = '押している間、録音';
+        document.getElementById('recStatus').textContent = '';
+      }
+      return; // 以降の処理（phaseIdx変化処理）はスキップ
     }
 
     // フェーズ進行 — phaseIdxが変わった時だけ処理
