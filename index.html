@@ -686,6 +686,28 @@ window._fbOnValue = onValue;
 window._fbPush = push;
 window._fbServerTimestamp = serverTimestamp;
 
+// Firebase操作をwindow経由でグローバルに公開
+window._IS_FACILITATOR = IS_FACILITATOR;
+window._fbDb = db;
+window._fbRef = ref;
+window._fbSet = set;
+window._fbOnValue = onValue;
+
+// fbWrite / fbListen をwindowに直接登録（通常scriptから呼べるように）
+window.fbWrite = function(path, data) {
+  console.log('[Firebase] writing:', path, data);
+  set(ref(db, path), data)
+    .then(function() { console.log('[Firebase] write OK:', path); })
+    .catch(function(e) { console.error('[Firebase] write FAILED:', path, e.message); });
+};
+window.fbListen = function(path, cb) {
+  console.log('[Firebase] listening on:', path);
+  onValue(ref(db, path), function(snap) {
+    console.log('[Firebase] received update on:', path, snap.val() ? 'has data' : 'null');
+    cb(snap.val());
+  });
+};
+
 // ロール表示バッジをセット（DOMContentLoaded後）
 document.addEventListener('DOMContentLoaded', function() {
   const badge = document.getElementById('roleBadge');
@@ -710,10 +732,16 @@ let anthropicKey = localStorage.getItem('formeny_anthropic_key') || '';
 let googleKey    = localStorage.getItem('formeny_google_key')    || '';
 let openaiKey    = localStorage.getItem('formeny_openai_key')    || '';
 
-// Firebase helpers (set by module script above)
-const IS_FACILITATOR = () => window._IS_FACILITATOR || false;
-const fbWrite = (path, data) => { if(window._fbDb) window._fbSet(window._fbRef(window._fbDb, path), data); };
-const fbListen = (path, cb) => { if(window._fbDb) window._fbOnValue(window._fbRef(window._fbDb, path), snap => cb(snap.val())); };
+// Firebase helpers — delegate to window.fb* set by module script
+function IS_FACILITATOR() { return window._IS_FACILITATOR || false; }
+function fbWrite(path, data) {
+  if (window.fbWrite) { window.fbWrite(path, data); }
+  else { console.warn('fbWrite not ready yet:', path); }
+}
+function fbListen(path, cb) {
+  if (window.fbListen) { window.fbListen(path, cb); }
+  else { console.warn('fbListen not ready yet:', path); }
+}
 let participants = [];
 let currentPhaseIdx = 0;
 let currentAudio = null;
