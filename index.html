@@ -1003,14 +1003,17 @@ async function announceNextTurn() {
 }
 
 // ── MediaRecorder recording ────────────────────────────────────
-// Whisperが確実に対応するMIMEタイプを優先順位で選ぶ
+// Whisperが確実に対応するMIMEタイプを選ぶ（Chrome優先）
 function getBestMimeType() {
+  // Chrome: audio/webm;codecs=opus が最も安定
+  // Safari: audio/mp4
+  // Firefox: audio/ogg;codecs=opus
   const candidates = [
-    'audio/mp4',           // Safari / iOS
-    'audio/webm;codecs=opus', // Chrome
-    'audio/webm',          // Chrome fallback
-    'audio/ogg;codecs=opus',  // Firefox
-    'audio/ogg',           // Firefox fallback
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/ogg',
+    'audio/mp4',
   ];
   for (const t of candidates) {
     if (MediaRecorder.isTypeSupported(t)) return t;
@@ -1020,8 +1023,8 @@ function getBestMimeType() {
 
 // MIMEタイプからWhisper用のファイル拡張子を決める
 function getExtForMime(mimeType) {
-  if (mimeType.includes('mp4'))  return 'm4a'; // Whisperはm4a拡張子を要求
   if (mimeType.includes('ogg'))  return 'ogg';
+  if (mimeType.includes('mp4'))  return 'm4a';
   return 'webm';
 }
 
@@ -1060,15 +1063,20 @@ async function stopRecording() {
   // Stop all mic tracks
   mediaRecorder.stream.getTracks().forEach(function(t) { t.stop(); });
 
+  // stop()を呼ぶ前に最後のchunkを確実に取得するため少し待つ
   await new Promise(function(resolve) {
     mediaRecorder.onstop = resolve;
+    mediaRecorder.requestData(); // 残っているデータを強制フラッシュ
     mediaRecorder.stop();
   });
+  // stop後に残りのデータが届くまで少し待つ
+  await new Promise(function(r) { setTimeout(r, 100); });
 
   const mimeType = (mediaRecorder && mediaRecorder.mimeType) ? mediaRecorder.mimeType : 'audio/webm';
-  const audioBlob = new Blob(recChunks, { type: mimeType });
+  const chunks = recChunks.slice(); // コピー
   recChunks = [];
-  console.log('[Rec] blob size:', audioBlob.size, 'mimeType:', mimeType);
+  const audioBlob = new Blob(chunks, { type: mimeType });
+  console.log('[Rec] blob size:', audioBlob.size, 'mimeType:', mimeType, 'chunks:', chunks.length);
 
   if (audioBlob.size === 0) {
     document.getElementById('recStatus').textContent = '録音が短すぎます。もう少し長く押してください';
