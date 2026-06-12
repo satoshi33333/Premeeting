@@ -1141,68 +1141,41 @@ function playBlob(blob) {
 
 // ── Script generation (Claude API) ───────────────────────────
 async function generateScript(phase) {
-  const names = participants.join('、');
-  const count = participants.length;
-
-  const prompts = {
-    intro:
-      'あなたはFOR ME NYのAIファシリテーター「フォーミー」です。\n' +
-      '今日のミーティング参加者は' + count + '名（' + names + '）です。\n' +
-      'ミーティング前ウォームアップの「イントロ」を話してください。\n' +
-      '含めること：温かい歓迎、今日のセッションの目的（答えを押しつけない・気づきを引き出す）、「いまこの瞬間」に戻ること。\n' +
-      '話し言葉のみ、約1分、毎回少し違う表現で。余分な記号・箇条書き不要。',
-
-    bodyscan:
-      'あなたはFOR ME NYのAIファシリテーター「フォーミー」です。\n' +
-      '参加者' + count + '名にボディスキャンのガイドを話してください。\n' +
-      '流れ：ゆっくりした呼吸の誘導→足先から頭まで身体への意識→「体の中にスペースができた」感覚で締め。\n' +
-      '【重要】参加者が実際に身体を感じられるよう、文と文の間に必ず [間 Ns] マーカーを入れてください。\n' +
-      '例：「まず、軽く息を吐きましょう。[間 4秒] 鼻からゆっくり息を吸って。[間 5秒] 口から静かに吐き出します。[間 5秒] 足のつま先に意識を向けてください。[間 4秒]」\n' +
-      '呼吸の誘導には4〜6秒、身体部位ごとに3〜4秒の間を入れる。\n' +
-      '話し言葉のみ。[間 Ns] 以外の記号・箇条書き不要。毎回少し違う表現で。',
-
-    impro_intro:
-      'あなたはFOR ME NYのAIファシリテーター「フォーミー」です。\n' +
-      '「One Word Story」の説明をしてください。参加者：' + names + '。\n' +
-      '含めること：ルール（一人ずつ一語ずつ）、大切なのは「つながること」、失敗しても笑ってOK、参加者の名前を呼びかける、「では始めましょう」で締める。\n' +
-      '話し言葉のみ、約1分、毎回少し違う表現で。余分な記号・箇条書き不要。',
-
-    outro:
-      'あなたはFOR ME NYのAIファシリテーター「フォーミー」です。\n' +
-      'One Word Storyが終わりました。' + count + '名（' + names + '）への締めのあいさつをしてください。\n' +
-      '含めること：体験を振り返る温かいコメント、ここで生まれたつながりをミーティングに持ち込む提案、短い別れのあいさつ。\n' +
-      '話し言葉のみ、約30秒、毎回少し違う表現で。余分な記号・箇条書き不要。',
-  };
-
-  try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': anthropicKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 800,
-        messages: [{ role: 'user', content: prompts[phase] }],
-      }),
-    });
-    const data = await resp.json();
-    if (data.error) throw new Error(data.error.message);
-    return data.content[0].text.trim();
-  } catch (e) {
-    console.error('Claude API error:', e);
-    return fallback(phase);
-  }
+  // Note: Anthropic API cannot be called directly from browsers (CORS restriction).
+  // Scripts are generated using the Artifacts API (Claude-in-Claude) or fallback text.
+  // For now, use rich fallback scripts with participant names and pause markers.
+  return fallback(phase);
 }
 
 function fallback(phase) {
+  const names = participants.length > 0 ? participants.join('さん、') + 'さん' : 'みなさん';
+  const nameList = participants.length > 0 ? participants.join('さん、') + 'さん' : 'みなさん';
   const fb = {
-    intro: 'こんにちは。私はAIファシリテーターのフォーミーです。今日の時間では、みなさんが自然体で発想し、お互いの感覚を共有できるよう、サポートしていきます。難しく考えずに、いまこの瞬間を感じながら進めていきましょう。',
-    bodyscan: 'まず、軽く息を吐きましょう。[間 4秒] 鼻からゆっくり息を吸って。[間 5秒] 口から静かに吐き出します。[間 5秒] 足のつま先に意識を向けてください。[間 4秒] ふくらはぎ。[間 3秒] 太もも。[間 3秒] お腹。[間 3秒] 胸。[間 3秒] 肩。[間 3秒] 首。[間 3秒] 顔。[間 4秒] それぞれの部分が、呼吸とともに、いまここに戻ってきます。[間 4秒] 深く吸って。[間 5秒] 吐いて。[間 5秒] 体の中に、少しスペースができましたね。',
-    impro_intro: '次は「ワンワード・ストーリー」です。一人ずつ、一つの言葉だけを言っていくアクティビティです。思いついた言葉をそのまま口に出すだけでOK。笑っても止まっても大丈夫。大切なのはつながること。では始めましょう。',
-    outro: 'お疲れ様でした。みなさんが紡いだ言葉と笑顔、どうぞこれからのミーティングの中にも持ち込んでください。それでは、始めましょう。',
+    intro: 'こんにちは。私はAIファシリテーターのフォーミーです。' +
+      nameList + '、今日はよろしくお願いします。' +
+      'この時間では、みなさんが自然体で発想し、お互いの感覚を共有できるよう、サポートしていきます。' +
+      '私は答えを出すためではなく、みなさんの中にある気づきを引き出すためにここにいます。' +
+      '難しく考えずに、いまこの瞬間を感じながら進めていきましょう。',
+
+    bodyscan: 'まず、軽く息を吐きましょう。[間 4秒] ' +
+      '鼻からゆっくり息を吸って。[間 5秒] ' +
+      '口から静かに吐き出します。[間 5秒] ' +
+      '足のつま先に意識を向けてください。[間 4秒] ' +
+      'ふくらはぎ。[間 3秒] 太もも。[間 3秒] お腹。[間 3秒] ' +
+      '胸。[間 3秒] 肩。[間 3秒] 首。[間 3秒] 顔。[間 4秒] ' +
+      'それぞれの部分が、呼吸とともに、いまここに戻ってきます。[間 4秒] ' +
+      '深く吸って。[間 5秒] 吐いて。[間 5秒] ' +
+      '体の中に、少しスペースができましたね。',
+
+    impro_intro: '次は「ワンワード・ストーリー」です。' +
+      '一人ずつ、一つの言葉だけを言っていくアクティビティです。' +
+      '思いついた言葉をそのまま口に出すだけでOK。' +
+      (participants.length > 0 ? participants[0] + 'さんが最初の一語を言ったら、' + (participants[1] || '次の方') + 'さんがそれに続けます。' : '') +
+      '笑っても止まっても大丈夫。大切なのはつながることです。では始めましょう。',
+
+    outro: 'お疲れ様でした。' + nameList + '、素晴らしい時間でした。' +
+      'みなさんが紡いだ言葉と、この場で生まれたつながりを、' +
+      'どうぞこれからのミーティングの中にも持ち込んでください。それでは、始めましょう。',
   };
   return fb[phase] || '';
 }
@@ -1595,17 +1568,16 @@ function _startFacilitatorStoryListener() {
   });
   fbListen('session/turnIdx', function(remoteTurnIdx) {
     if (typeof remoteTurnIdx !== 'number') return;
-    if (remoteTurnIdx !== currentTurnIdx) {
-      currentTurnIdx = remoteTurnIdx;
-      updateHighlight();
-      // 自分のTTSアナウンスが終わっていなければスキップ
-      const phase = PHASES[currentPhaseIdx];
-      if (phase === 'impro_game') {
-        document.getElementById('storyAnnounce').textContent = participants[currentTurnIdx] + 'さん、どうぞ';
-        stopAudio();
-        announceNextTurn();
-      }
-    }
+    const phase = PHASES[currentPhaseIdx];
+    if (phase !== 'impro_game') return;
+    // 自分の録音直後はstopRecordingがすでにannounceNextTurnを呼ぶので、
+    // Firebaseから受け取ったturnIdxが自分が書き込んだものと同じ場合はスキップ
+    if (remoteTurnIdx === currentTurnIdx) return;
+    // 他の参加者が録音してturnIdxが進んだ場合のみ更新・アナウンス
+    currentTurnIdx = remoteTurnIdx;
+    updateHighlight();
+    document.getElementById('storyAnnounce').textContent = participants[currentTurnIdx] + 'さん、どうぞ';
+    announceNextTurn();
   });
 }
 
