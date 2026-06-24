@@ -506,13 +506,26 @@
       <div class="ldots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>
     </div>
     <!-- 参加者はGoogle Cloud APIキーのみ必要（音声合成のため） -->
-    <div class="card" style="width:100%; max-width:500px;">
+    <div class="card" id="googleKeyCardP" style="width:100%; max-width:500px;">
       <div class="field-label">Google Cloud API Key（音声合成）</div>
       <div class="key-row">
         <input class="key-input" id="googleKeyP" type="password" placeholder="AIza..." />
         <button class="save-btn" onclick="saveGoogleKeyP()">保存</button>
       </div>
       <div class="key-status" id="googleStatusP">未設定</div>
+    </div>
+
+    <!-- 音声を有効にするボタン（ブラウザの自動再生制限を回避）— 必ずタップしてもらう -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; max-width:500px;">
+      <div style="font-size:11px; color:var(--apricot); letter-spacing:0.06em; text-align:center;">
+        ↓ AIの声を聞くために必ずタップしてください
+      </div>
+      <button type="button" class="start-btn" id="enableAudioBtn" onclick="enableAudioPlayback()">
+        🔊 音声を有効にする
+      </button>
+      <div id="audioEnabledMsg" style="display:none; font-size:11px; color:var(--green); letter-spacing:0.08em;">
+        音声が有効になりました ✓ このまま待機してください
+      </div>
     </div>
   </div>
 </div>
@@ -761,8 +774,12 @@ const PROGRESS_MAP = { intro: 10, bodyscan: 35, impro_intro: 60, impro_game: 80,
   if (anthropicKey) { setKeyOk('anthropicStatus'); document.getElementById('anthropicKey').value = '••••••••'; }
   if (googleKey)    { setKeyOk('googleStatus');    document.getElementById('googleKey').value    = '••••••••'; }
   if (openaiKey)    { setKeyOk('openaiStatus');    document.getElementById('openaiKey').value    = '••••••••'; }
-  // 参加者用キー復元
-  if (googleKey)  { setKeyOk('googleStatusP');  if(document.getElementById('googleKeyP'))  document.getElementById('googleKeyP').value  = '••••••••'; }
+  // 参加者用キー復元 — キーが既にある場合はカード自体を隠して音声有効化ボタンを目立たせる
+  if (googleKey) {
+    setKeyOk('googleStatusP');
+    if (document.getElementById('googleKeyP')) document.getElementById('googleKeyP').value = '••••••••';
+    if (document.getElementById('googleKeyCardP')) document.getElementById('googleKeyCardP').style.display = 'none';
+  }
   addParticipantField();
   addParticipantField();
   addParticipantField();
@@ -1227,7 +1244,17 @@ function speakSegment(text) {
       const playPromise = audio.play();
       if (playPromise !== undefined) {
         playPromise.catch(function(e) {
-          console.warn('Audio play() rejected:', e);
+          console.warn('Audio play() rejected (likely autoplay block):', e.name, e.message);
+          // 自動再生がブロックされた場合、画面に警告を出す
+          if (e.name === 'NotAllowedError') {
+            const box = document.getElementById('scriptBox');
+            if (box) {
+              const warn = document.createElement('div');
+              warn.style.cssText = 'margin-top:12px; font-size:11px; color:var(--red);';
+              warn.textContent = '⚠ 音声がブロックされました。画面のどこかをタップしてから再度お試しください。';
+              box.appendChild(warn);
+            }
+          }
           cleanup();
         });
       }
@@ -1376,6 +1403,21 @@ function resetSession() {
 }
 
 // ── Participant key save functions ───────────────────────────
+
+// 音声再生の許可をブラウザから得るための無音再生（自動再生制限の回避）
+let _audioUnlocked = false;
+function enableAudioPlayback() {
+  // 無音の短いWAVをdata URLで再生し、ユーザー操作による再生として記録させる
+  const silentWav = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+  const audio = new Audio(silentWav);
+  audio.play().then(function() {
+    _audioUnlocked = true;
+    document.getElementById('enableAudioBtn').style.display = 'none';
+    document.getElementById('audioEnabledMsg').style.display = 'block';
+  }).catch(function(e) {
+    console.warn('Audio unlock failed:', e);
+  });
+}
 
 function saveGoogleKeyP() {
   const v = document.getElementById('googleKeyP').value.trim();
